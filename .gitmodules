@@ -1,0 +1,4 @@
+[submodule "mesh2motion-app"]
+	path = mesh2motion-app
+	url = https://github.com/jtydhr88/mesh2motion-app.git
+	branch = comfyui-support

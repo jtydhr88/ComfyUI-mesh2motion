@@ -1,0 +1,17 @@
+{
+  "dialog": {
+    "title": "Mesh2Motion 3D Editor",
+    "save": "Save to ComfyUI",
+    "cancel": "Cancel",
+    "saveSuccess": "Model saved successfully",
+    "saveFailed": "Failed to save model"
+  },
+  "editor": {
+    "loading": "Loading Mesh2Motion editor...",
+    "noModel": "No 3D model loaded. Upload a model to get started.",
+    "exportFailed": "Failed to export model"
+  },
+  "menu": {
+    "openEditor": "Open in Mesh2Motion"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "dialog": {
+    "title": "Mesh2Motion 3D 编辑器",
+    "save": "保存到 ComfyUI",
+    "cancel": "取消",
+    "saveSuccess": "模型保存成功",
+    "saveFailed": "保存模型失败"
+  },
+  "editor": {
+    "loading": "正在加载 Mesh2Motion 编辑器...",
+    "noModel": "未加载3D模型。上传模型以开始。",
+    "exportFailed": "导出模型失败"
+  },
+  "menu": {
+    "openEditor": "在 Mesh2Motion 中打开"
+  }
+}
