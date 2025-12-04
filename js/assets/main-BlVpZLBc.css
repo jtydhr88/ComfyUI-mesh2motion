@@ -1,0 +1,14 @@
+
+.mesh2motion-iframe[data-v-aedd6d4b] {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+}
+
+/* Global style for PrimeVue Dialog - not scoped */
+.p-dialog-content {
+  flex: 1;
+  overflow: hidden;
+  padding: 0 !important;
+}

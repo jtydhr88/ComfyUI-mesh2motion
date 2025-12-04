@@ -16668,7 +16668,7 @@ function _toPrimitive(t2, r) {
 var _hoisted_1$1 = ["data-p"];
 var _hoisted_2$1 = ["aria-labelledby", "aria-modal", "data-p"];
 var _hoisted_3$1 = ["id"];
-var _hoisted_4$1 = ["data-p"];
+var _hoisted_4 = ["data-p"];
 function render(_ctx, _cache, $props, $setup, $data, $options) {
   var _component_Button = resolveComponent("Button");
   var _component_Portal = resolveComponent("Portal");
@@ -16795,7 +16795,7 @@ function render(_ctx, _cache, $props, $setup, $data, $options) {
             "class": [_ctx.cx("content"), _ctx.contentClass],
             style: _ctx.contentStyle,
             "data-p": $options.dataP
-          }, _objectSpread(_objectSpread({}, _ctx.contentProps), _ctx.ptm("content"))), [renderSlot(_ctx.$slots, "default")], 16, _hoisted_4$1), _ctx.footer || _ctx.$slots.footer ? (openBlock(), createElementBlock("div", mergeProps({
+          }, _objectSpread(_objectSpread({}, _ctx.contentProps), _ctx.ptm("content"))), [renderSlot(_ctx.$slots, "default")], 16, _hoisted_4), _ctx.footer || _ctx.$slots.footer ? (openBlock(), createElementBlock("div", mergeProps({
             key: 1,
             ref: $options.footerContainerRef,
             "class": _ctx.cx("footer")
@@ -16814,11 +16814,7 @@ function render(_ctx, _cache, $props, $setup, $data, $options) {
 script.render = render;
 const _hoisted_1 = { class: "mesh2motion-wrapper h-full w-full flex" };
 const _hoisted_2 = { class: "flex-1 relative" };
-const _hoisted_3 = {
-  key: 0,
-  class: "mesh2motion-loading"
-};
-const _hoisted_4 = ["src"];
+const _hoisted_3 = ["src"];
 const _sfc_main$1 = /* @__PURE__ */ defineComponent({
   __name: "Mesh2MotionEditor",
   props: {
@@ -16836,7 +16832,7 @@ const _sfc_main$1 = /* @__PURE__ */ defineComponent({
       const params = new URLSearchParams();
       params.set("theme", props.theme || "dark");
       params.set("comfyui", "true");
-      return `/mesh2motion?${params.toString()}`;
+      return `/mesh2motion/create-comfyui.html?${params.toString()}`;
     });
     function handleMessage(event) {
       var _a;
@@ -16844,11 +16840,14 @@ const _sfc_main$1 = /* @__PURE__ */ defineComponent({
         return;
       }
       const { type, data: data3 } = event.data || {};
+      console.log("[Mesh2MotionEditor] Received message from iframe:", type, data3);
       switch (type) {
         case "mesh2motion:ready":
+          console.log("[Mesh2MotionEditor] iframe is ready, pendingModelUrl:", pendingModelUrl);
           ready.value = true;
           emit2("ready");
           if (pendingModelUrl) {
+            console.log("[Mesh2MotionEditor] Loading pending model:", pendingModelUrl);
             loadModelToEditor(pendingModelUrl);
             pendingModelUrl = null;
           }
@@ -16873,10 +16872,13 @@ const _sfc_main$1 = /* @__PURE__ */ defineComponent({
       }
     }
     function loadModelToEditor(modelUrl) {
+      console.log("[Mesh2MotionEditor] loadModelToEditor called, ready:", ready.value, "url:", modelUrl);
       if (!ready.value) {
+        console.log("[Mesh2MotionEditor] Not ready yet, queuing model URL");
         pendingModelUrl = modelUrl;
         return;
       }
+      console.log("[Mesh2MotionEditor] Sending loadModel message to iframe");
       postMessage({ type: "comfyui:loadModel", data: { url: modelUrl } });
     }
     function requestExport() {
@@ -16905,14 +16907,13 @@ const _sfc_main$1 = /* @__PURE__ */ defineComponent({
     return (_ctx, _cache) => {
       return openBlock(), createElementBlock("div", _hoisted_1, [
         createBaseVNode("div", _hoisted_2, [
-          !ready.value ? (openBlock(), createElementBlock("div", _hoisted_3, toDisplayString$1(_ctx.$t("editor.loading")), 1)) : createCommentVNode("", true),
           createBaseVNode("iframe", {
             ref_key: "iframeRef",
             ref: iframeRef,
             src: iframeSrc.value,
             class: "mesh2motion-iframe h-full w-full",
             allow: "cross-origin-isolated"
-          }, null, 8, _hoisted_4)
+          }, null, 8, _hoisted_3)
         ])
       ]);
     };
@@ -16925,7 +16926,7 @@ const _export_sfc = (sfc, props) => {
   }
   return target;
 };
-const Mesh2MotionEditor = /* @__PURE__ */ _export_sfc(_sfc_main$1, [["__scopeId", "data-v-4761bfd7"]]);
+const Mesh2MotionEditor = /* @__PURE__ */ _export_sfc(_sfc_main$1, [["__scopeId", "data-v-aedd6d4b"]]);
 const _sfc_main = /* @__PURE__ */ defineComponent({
   __name: "Root",
   setup(__props, { expose: __expose }) {
@@ -17038,15 +17039,7 @@ const i18n = createI18n({
 let mountContainer = null;
 let vueApp = null;
 let rootInstance = null;
-const MODEL_3D_NODES = [
-  "Load3DModel",
-  "Load3D",
-  "Preview3D",
-  "Save3D",
-  "SaveMesh",
-  "LoadMesh",
-  "PreviewMesh"
-];
+const MODEL_3D_NODES = ["Load3D", "Preview3D", "SaveGLB"];
 function isModel3DNode(node) {
   var _a;
   if (!node || typeof node !== "object") return false;
@@ -17065,8 +17058,15 @@ function isModel3DNode(node) {
   return false;
 }
 function getModelUrlFromNode(node) {
-  var _a, _b;
-  if ((_a = node.images) == null ? void 0 : _a[0]) {
+  var _a, _b, _c, _d;
+  const nodeClass = (_a = node.constructor) == null ? void 0 : _a.comfyClass;
+  if (nodeClass === "Preview3D") {
+    const lastModelFile = (_b = node.properties) == null ? void 0 : _b["Last Time Model File"];
+    if (lastModelFile) {
+      return buildModelUrl(lastModelFile, "output");
+    }
+  }
+  if ((_c = node.images) == null ? void 0 : _c[0]) {
     const model = node.images[0];
     const params = new URLSearchParams({
       filename: model.filename,
@@ -17075,25 +17075,28 @@ function getModelUrlFromNode(node) {
     });
     return api.apiURL(`/view?${params.toString()}`);
   }
-  const modelWidget = (_b = node.widgets) == null ? void 0 : _b.find(
+  const modelWidget = (_d = node.widgets) == null ? void 0 : _d.find(
     (w2) => w2.name === "model_file" || w2.name === "mesh" || w2.name === "3d_model" || w2.name === "model"
   );
   if (modelWidget == null ? void 0 : modelWidget.value) {
-    const value = modelWidget.value;
-    const match = value.match(/^(.+?)(?:\s*\[(\w+)\])?$/);
-    if (match) {
-      const fullPath = match[1];
-      const type = match[2] || "input";
-      const lastSlash = fullPath.lastIndexOf("/");
-      const subfolder = lastSlash > -1 ? fullPath.substring(0, lastSlash) : "";
-      const filename = lastSlash > -1 ? fullPath.substring(lastSlash + 1) : fullPath;
-      const params = new URLSearchParams({
-        filename,
-        type,
-        subfolder
-      });
-      return api.apiURL(`/view?${params.toString()}`);
-    }
+    return buildModelUrl(modelWidget.value, "input");
+  }
+  return null;
+}
+function buildModelUrl(value, defaultType) {
+  const match = value.match(/^(.+?)(?:\s*\[(\w+)\])?$/);
+  if (match) {
+    const fullPath = match[1];
+    const type = match[2] || defaultType;
+    const lastSlash = fullPath.lastIndexOf("/");
+    const subfolder = lastSlash > -1 ? fullPath.substring(0, lastSlash) : "";
+    const filename = lastSlash > -1 ? fullPath.substring(lastSlash + 1) : fullPath;
+    const params = new URLSearchParams({
+      filename,
+      type,
+      subfolder
+    });
+    return api.apiURL(`/view?${params.toString()}`);
   }
   return null;
 }
