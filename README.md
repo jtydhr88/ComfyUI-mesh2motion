@@ -19,22 +19,10 @@ A ComfyUI extension that integrates [Mesh2Motion](https://mesh2motion.org) for 3
 1. Clone this repository with submodules into your `ComfyUI/custom_nodes` directory:
    ```bash
    cd ComfyUI/custom_nodes
-   git clone --recurse-submodules https://github.com/jtydhr88/ComfyUI-mesh2motion.git
+   git clone this repo
    ```
 
-2. Install dependencies and build:
-   ```bash
-   cd ComfyUI-mesh2motion
-   npm install
-   npm run build
-
-   # Build mesh2motion-app for ComfyUI
-   cd mesh2motion-app
-   npm install
-   npm run build:comfyui
-   ```
-
-3. Restart ComfyUI
+2. Restart ComfyUI
 
 ## Usage
 
