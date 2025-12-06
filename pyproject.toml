@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-mesh2motion"
 description = "Integrates Mesh2motion into ComfyUI for 3D model animation rigging"
-version = "0.1.0"
+version = "0.2.0"
 license = "MIT"
 readme = "README.md"
 requires-python = ">=3.9"

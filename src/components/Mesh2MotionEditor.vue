@@ -17,28 +17,29 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 const props = defineProps<{
   initialModelUrl?: string | null
   theme?: 'light' | 'dark'
+  page?: 'create' | 'explore'
 }>()
 
 const emit = defineEmits<{
   ready: []
   save: [modelData: ArrayBuffer, filename: string]
+  imageExport: [imageDataUrl: string, filename: string, width: number, height: number]
 }>()
 
 const iframeRef = ref<HTMLIFrameElement | null>(null)
 const ready = ref(false)
 
-// Pending operations queue (for operations requested before iframe is ready)
 let pendingModelUrl: string | null = null
 
-// Build iframe URL with params - directly load the create page for model editing
 const iframeSrc = computed(() => {
   const params = new URLSearchParams()
   params.set('theme', props.theme || 'dark')
   params.set('comfyui', 'true') // Flag to indicate we're running inside ComfyUI
-  return `/mesh2motion/create-comfyui.html?${params.toString()}`
+
+  const pageName = props.page === 'explore' ? 'index-comfyui.html' : 'create-comfyui.html'
+  return `/mesh2motion/${pageName}?${params.toString()}`
 })
 
-// Handle messages from iframe
 function handleMessage(event: MessageEvent) {
   // Only handle messages from our iframe
   if (event.source !== iframeRef.value?.contentWindow) {
@@ -61,6 +62,12 @@ function handleMessage(event: MessageEvent) {
       }
       break
 
+    case 'mesh2motion:imageExport':
+      if (data?.imageDataUrl && data?.filename) {
+        emit('imageExport', data.imageDataUrl, data.filename, data.width || 512, data.height || 512)
+      }
+      break
+
     case 'mesh2motion:export':
       // Handle export from Mesh2Motion
       if (data?.modelData && data?.filename) {
@@ -78,14 +85,12 @@ function handleMessage(event: MessageEvent) {
   }
 }
 
-// Send message to iframe
 function postMessage(message: object) {
   if (iframeRef.value?.contentWindow) {
     iframeRef.value.contentWindow.postMessage(message, '*')
   }
 }
 
-// Load model to editor
 function loadModelToEditor(modelUrl: string) {
   console.log('[Mesh2MotionEditor] loadModelToEditor called, ready:', ready.value, 'url:', modelUrl)
   if (!ready.value) {
@@ -97,7 +102,6 @@ function loadModelToEditor(modelUrl: string) {
   postMessage({ type: 'comfyui:loadModel', data: { url: modelUrl } })
 }
 
-// Request export from editor
 function requestExport(): void {
   if (!ready.value) {
     return
@@ -105,7 +109,6 @@ function requestExport(): void {
   postMessage({ type: 'comfyui:requestExport' })
 }
 
-// Set theme
 function setTheme(theme: 'light' | 'dark') {
   postMessage({ type: 'comfyui:setTheme', data: { theme } })
 }
@@ -113,7 +116,6 @@ function setTheme(theme: 'light' | 'dark') {
 onMounted(() => {
   window.addEventListener('message', handleMessage)
 
-  // If initial model URL provided, queue it
   if (props.initialModelUrl) {
     pendingModelUrl = props.initialModelUrl
   }

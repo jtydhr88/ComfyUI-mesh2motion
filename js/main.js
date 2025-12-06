@@ -16819,9 +16819,10 @@ const _sfc_main$1 = /* @__PURE__ */ defineComponent({
   __name: "Mesh2MotionEditor",
   props: {
     initialModelUrl: {},
-    theme: {}
+    theme: {},
+    page: {}
   },
-  emits: ["ready", "save"],
+  emits: ["ready", "save", "imageExport"],
   setup(__props, { expose: __expose, emit: __emit }) {
     const props = __props;
     const emit2 = __emit;
@@ -16832,7 +16833,8 @@ const _sfc_main$1 = /* @__PURE__ */ defineComponent({
       const params = new URLSearchParams();
       params.set("theme", props.theme || "dark");
       params.set("comfyui", "true");
-      return `/mesh2motion/create-comfyui.html?${params.toString()}`;
+      const pageName = props.page === "explore" ? "index-comfyui.html" : "create-comfyui.html";
+      return `/mesh2motion/${pageName}?${params.toString()}`;
     });
     function handleMessage(event) {
       var _a;
@@ -16850,6 +16852,11 @@ const _sfc_main$1 = /* @__PURE__ */ defineComponent({
             console.log("[Mesh2MotionEditor] Loading pending model:", pendingModelUrl);
             loadModelToEditor(pendingModelUrl);
             pendingModelUrl = null;
+          }
+          break;
+        case "mesh2motion:imageExport":
+          if ((data3 == null ? void 0 : data3.imageDataUrl) && (data3 == null ? void 0 : data3.filename)) {
+            emit2("imageExport", data3.imageDataUrl, data3.filename, data3.width || 512, data3.height || 512);
           }
           break;
         case "mesh2motion:export":
@@ -16926,16 +16933,18 @@ const _export_sfc = (sfc, props) => {
   }
   return target;
 };
-const Mesh2MotionEditor = /* @__PURE__ */ _export_sfc(_sfc_main$1, [["__scopeId", "data-v-aedd6d4b"]]);
+const Mesh2MotionEditor = /* @__PURE__ */ _export_sfc(_sfc_main$1, [["__scopeId", "data-v-a9425bf7"]]);
 const _sfc_main = /* @__PURE__ */ defineComponent({
   __name: "Root",
   setup(__props, { expose: __expose }) {
     const visible = ref(false);
     const currentModelUrl = ref(null);
     const currentNode = ref(null);
+    const currentPage = ref("create");
     const editorReady = ref(false);
     const mesh2motionEditorRef = ref(null);
     const theme = ref("dark");
+    let imageExportCallback = null;
     let saveCallback = null;
     onMounted(() => {
       var _a, _b;
@@ -16951,15 +16960,26 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
     function loadModel(modelUrl, node) {
       currentModelUrl.value = modelUrl;
       currentNode.value = node || null;
+      currentPage.value = "create";
       visible.value = true;
     }
     function openNew(node) {
       currentModelUrl.value = null;
       currentNode.value = node || null;
+      currentPage.value = "create";
+      visible.value = true;
+    }
+    function openExplore(node) {
+      currentModelUrl.value = null;
+      currentNode.value = node || null;
+      currentPage.value = "explore";
       visible.value = true;
     }
     function setSaveCallback(callback) {
       saveCallback = callback;
+    }
+    function setImageExportCallback(callback) {
+      imageExportCallback = callback;
     }
     function handleEditorReady() {
       editorReady.value = true;
@@ -16968,6 +16988,7 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
       editorReady.value = false;
       currentModelUrl.value = null;
       currentNode.value = null;
+      currentPage.value = "create";
     }
     async function handleSave(modelData, filename) {
       if (!saveCallback) return;
@@ -16978,12 +16999,22 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
         console.error("[Mesh2Motion] Save failed:", error);
       }
     }
+    async function handleImageExport(imageDataUrl, filename, width, height) {
+      if (!imageExportCallback) return;
+      try {
+        await imageExportCallback(imageDataUrl, filename, width, height, currentNode.value);
+      } catch (error) {
+        console.error("[Mesh2Motion] Image export failed:", error);
+      }
+    }
     __expose({
       open,
       close: close2,
       loadModel,
       openNew,
-      setSaveCallback
+      openExplore,
+      setSaveCallback,
+      setImageExportCallback
     });
     return (_ctx, _cache) => {
       return openBlock(), createBlock(unref(script), {
@@ -17005,9 +17036,11 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
             ref: mesh2motionEditorRef,
             "initial-model-url": currentModelUrl.value,
             theme: theme.value,
+            page: currentPage.value,
             onReady: handleEditorReady,
-            onSave: handleSave
-          }, null, 8, ["initial-model-url", "theme"])) : createCommentVNode("", true)
+            onSave: handleSave,
+            onImageExport: handleImageExport
+          }, null, 8, ["initial-model-url", "theme", "page"])) : createCommentVNode("", true)
         ]),
         _: 1
       }, 8, ["visible", "header"]);
@@ -17040,6 +17073,7 @@ let mountContainer = null;
 let vueApp = null;
 let rootInstance = null;
 const MODEL_3D_NODES = ["Load3D", "Preview3D", "SaveGLB"];
+const IMAGE_NODES = ["LoadImage", "LoadImageMask"];
 function isModel3DNode(node) {
   var _a;
   if (!node || typeof node !== "object") return false;
@@ -17112,6 +17146,7 @@ function ensureMesh2MotionInstance() {
   vueApp.use(PrimeVue);
   rootInstance = vueApp.mount(mountContainer);
   rootInstance.setSaveCallback(handleSaveToComfyUI);
+  rootInstance.setImageExportCallback(handleImageExportToComfyUI);
   return rootInstance;
 }
 async function handleSaveToComfyUI(modelData, filename, node) {
@@ -17159,6 +17194,94 @@ async function handleSaveToComfyUI(modelData, filename, node) {
     throw error;
   }
 }
+function findLoadImageNode() {
+  var _a, _b, _c, _d;
+  const graph = app.graph;
+  if (!graph) return null;
+  const selectedNodes = (_b = (_a = graph.list_of_graphcanvas) == null ? void 0 : _a[0]) == null ? void 0 : _b.selected_nodes;
+  if (selectedNodes) {
+    for (const nodeId of Object.keys(selectedNodes)) {
+      const node = graph.getNodeById(Number(nodeId));
+      const nodeClass = (_c = node == null ? void 0 : node.constructor) == null ? void 0 : _c.comfyClass;
+      if (nodeClass && IMAGE_NODES.includes(nodeClass)) {
+        return node;
+      }
+    }
+  }
+  const nodes = graph._nodes || [];
+  for (const node of nodes) {
+    const nodeClass = (_d = node == null ? void 0 : node.constructor) == null ? void 0 : _d.comfyClass;
+    if (nodeClass && IMAGE_NODES.includes(nodeClass)) {
+      return node;
+    }
+  }
+  return null;
+}
+async function handleImageExportToComfyUI(imageDataUrl, filename, width, height, _node) {
+  var _a, _b, _c;
+  try {
+    const response = await fetch(imageDataUrl);
+    const blob = await response.blob();
+    const finalFilename = filename || `mesh2motion-render-${Date.now()}.png`;
+    const formData = new FormData();
+    formData.append("image", blob, finalFilename);
+    formData.append("type", "input");
+    formData.append("subfolder", "mesh2motion");
+    formData.append("overwrite", "true");
+    const uploadResponse = await api.fetchApi("/upload/image", {
+      method: "POST",
+      body: formData
+    });
+    if (!uploadResponse.ok) {
+      throw new Error("Failed to upload image");
+    }
+    const result = await uploadResponse.json();
+    const imageNode = findLoadImageNode();
+    if (imageNode) {
+      const widgetValue = result.subfolder ? `${result.subfolder}/${result.name}` : result.name;
+      imageNode.images = [
+        {
+          filename: result.name,
+          subfolder: result.subfolder || "",
+          type: "input"
+        }
+      ];
+      const imageWidget = (_a = imageNode.widgets) == null ? void 0 : _a.find((w2) => w2.name === "image");
+      if (imageWidget) {
+        if (((_b = imageWidget.options) == null ? void 0 : _b.values) && !imageWidget.options.values.includes(widgetValue)) {
+          imageWidget.options.values.push(widgetValue);
+        }
+        imageWidget.value = widgetValue;
+        if (imageNode.widgets_values && imageNode.widgets) {
+          const widgetIndex = imageNode.widgets.findIndex(
+            (w2) => w2.name === "image"
+          );
+          if (widgetIndex >= 0) {
+            imageNode.widgets_values[widgetIndex] = widgetValue;
+          }
+        }
+        if (imageNode.properties) {
+          imageNode.properties["image"] = widgetValue;
+        }
+        (_c = imageWidget.callback) == null ? void 0 : _c.call(imageWidget, widgetValue);
+      }
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.src = imageDataUrl;
+      await new Promise((resolve2) => {
+        img.onload = resolve2;
+      });
+      imageNode.imgs = [img];
+      app.graph.setDirtyCanvas(true, true);
+      console.log("[Mesh2Motion] Image exported and LoadImage node updated:", result, `(${width}x${height})`);
+    } else {
+      console.log("[Mesh2Motion] Image exported (no LoadImage node found):", result, `(${width}x${height})`);
+    }
+  } catch (error) {
+    console.error("[Mesh2Motion] Failed to export image:", error);
+    throw error;
+  }
+}
 function openMesh2MotionEditor(node) {
   const instance = ensureMesh2MotionInstance();
   if (node) {
@@ -17171,6 +17294,10 @@ function openMesh2MotionEditor(node) {
   } else {
     instance.openNew();
   }
+}
+function openMesh2MotionExplore(node) {
+  const instance = ensureMesh2MotionInstance();
+  instance.openExplore(node);
 }
 app.registerExtension({
   name: "ComfyUI.Mesh2Motion",
@@ -17189,24 +17316,47 @@ app.registerExtension({
     var _a;
     const typedNode = node;
     const nodeClass = (_a = typedNode == null ? void 0 : typedNode.constructor) == null ? void 0 : _a.comfyClass;
-    if (!nodeClass || !MODEL_3D_NODES.includes(nodeClass)) {
-      if (!isModel3DNode(node)) {
-        return [];
-      }
-    }
-    return [
-      null,
-      // Separator
-      {
-        content: "Open in Mesh2Motion",
-        callback: () => {
-          openMesh2MotionEditor(node);
+    if (nodeClass && IMAGE_NODES.includes(nodeClass)) {
+      return [
+        null,
+        // Separator
+        {
+          content: "Open in Mesh2Motion",
+          callback: () => {
+            openMesh2MotionExplore(node);
+          }
         }
-      }
-    ];
+      ];
+    }
+    if (nodeClass && MODEL_3D_NODES.includes(nodeClass)) {
+      return [
+        null,
+        // Separator
+        {
+          content: "Open in Mesh2Motion",
+          callback: () => {
+            openMesh2MotionEditor(node);
+          }
+        }
+      ];
+    }
+    if (isModel3DNode(node)) {
+      return [
+        null,
+        // Separator
+        {
+          content: "Open in Mesh2Motion",
+          callback: () => {
+            openMesh2MotionEditor(node);
+          }
+        }
+      ];
+    }
+    return [];
   }
 });
 export {
-  openMesh2MotionEditor
+  openMesh2MotionEditor,
+  openMesh2MotionExplore
 };
 //# sourceMappingURL=main.js.map
