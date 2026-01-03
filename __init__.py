@@ -59,10 +59,17 @@ async def serve_mesh2motion_static(request):
 
     # If it's a directory, try to serve index files
     if file_path.is_dir():
-        for index_name in ['index-comfyui.html', 'index.html', 'create-comfyui.html', 'create.html']:
+        for index_name in ['index-comfyui.html', 'index.html', 'create-comfyui.html', 'create.html', 'retarget-comfyui.html', 'retarget.html']:
             index_path = file_path / index_name
             if index_path.exists():
                 return web.FileResponse(index_path)
+
+    # Special handling for retarget page
+    if path == 'retarget' or path == 'retarget/':
+        for filename in ['retarget-comfyui.html', 'retarget.html']:
+            retarget_path = MESH2MOTION_UI_PATH / filename
+            if retarget_path.exists():
+                return web.FileResponse(retarget_path)
 
     # Serve the file if it exists
     if file_path.exists() and file_path.is_file():
