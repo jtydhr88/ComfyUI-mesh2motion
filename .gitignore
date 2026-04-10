@@ -1,9 +1,6 @@
 # Dependencies
 node_modules/
 
-# Build output
-mesh2motion-app/dist/
-
 # JS build output is committed for distribution
 # js/
 
@@ -29,3 +26,8 @@ Thumbs.db
 *.tsbuildinfo
 
 __init__.cpython-311.pyc
+
+__pycache__
+
+qwenmultiangle
+node.zip

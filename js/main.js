@@ -16933,7 +16933,7 @@ const _export_sfc = (sfc, props) => {
   }
   return target;
 };
-const Mesh2MotionEditor = /* @__PURE__ */ _export_sfc(_sfc_main$1, [["__scopeId", "data-v-a9425bf7"]]);
+const Mesh2MotionEditor = /* @__PURE__ */ _export_sfc(_sfc_main$1, [["__scopeId", "data-v-36e86e1f"]]);
 const _sfc_main = /* @__PURE__ */ defineComponent({
   __name: "Root",
   setup(__props, { expose: __expose }) {
@@ -17073,7 +17073,7 @@ let mountContainer = null;
 let vueApp = null;
 let rootInstance = null;
 const MODEL_3D_NODES = ["Load3D", "Preview3D", "SaveGLB"];
-const IMAGE_NODES = ["LoadImage", "LoadImageMask"];
+const IMAGE_NODES = ["LoadImage"];
 function isModel3DNode(node) {
   var _a;
   if (!node || typeof node !== "object") return false;
@@ -17189,6 +17189,25 @@ async function handleSaveToComfyUI(modelData, filename, node) {
       app.graph.setDirtyCanvas(true, true);
     }
     console.log("[Mesh2Motion] Model saved successfully:", result);
+    const editorTaskId = window.__mesh2motion_editor_task_id;
+    if (editorTaskId) {
+      const filePath = result.subfolder ? `${result.subfolder}/${result.name}` : result.name;
+      try {
+        await api.fetchApi("/mesh2motion/api/task-complete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            task_id: editorTaskId,
+            status: "ok",
+            file_path: filePath
+          })
+        });
+        console.log(`[Mesh2Motion] Editor task ${editorTaskId} completed`);
+      } catch (err) {
+        console.error("[Mesh2Motion] Failed to complete editor task:", err);
+      }
+      delete window.__mesh2motion_editor_task_id;
+    }
   } catch (error) {
     console.error("[Mesh2Motion] Failed to save model:", error);
     throw error;
@@ -17299,6 +17318,244 @@ function openMesh2MotionExplore(node) {
   const instance = ensureMesh2MotionInstance();
   instance.openExplore(node);
 }
+function captureFromMesh2MotionIframe(iframe) {
+  return new Promise((resolve2, reject) => {
+    var _a;
+    const timeout = setTimeout(() => {
+      window.removeEventListener("message", handler3);
+      reject(new Error("Mesh2Motion capture timeout"));
+    }, 15e3);
+    const handler3 = (event) => {
+      var _a2;
+      if (event.source !== iframe.contentWindow) return;
+      if (((_a2 = event.data) == null ? void 0 : _a2.type) === "mesh2motion:captureResult") {
+        clearTimeout(timeout);
+        window.removeEventListener("message", handler3);
+        resolve2(event.data.data);
+      }
+    };
+    window.addEventListener("message", handler3);
+    (_a = iframe.contentWindow) == null ? void 0 : _a.postMessage({ type: "mesh2motion:capture" }, "*");
+  });
+}
+async function uploadMesh2MotionTempImage(dataUrl) {
+  const blob = await fetch(dataUrl).then((r) => r.blob());
+  const name = `mesh2motion_${Date.now()}.png`;
+  const file = new File([blob], name, { type: "image/png" });
+  const body = new FormData();
+  body.append("image", file);
+  body.append("subfolder", "mesh2motion");
+  body.append("type", "temp");
+  const resp = await api.fetchApi("/upload/image", {
+    method: "POST",
+    body
+  });
+  if (resp.status !== 200) {
+    throw new Error(`Upload failed: ${resp.status}`);
+  }
+  return await resp.json();
+}
+function createMesh2MotionExploreWidget(node) {
+  const container = document.createElement("div");
+  container.style.cssText = "width:100%;height:100%;position:relative;overflow:hidden;";
+  const iframe = document.createElement("iframe");
+  iframe.src = "/mesh2motion/index-comfyui.html?comfyui=true&theme=dark";
+  iframe.style.cssText = "width:100%;height:100%;border:none;display:block;";
+  iframe.allow = "cross-origin-isolated";
+  container.appendChild(iframe);
+  node._mesh2motionIframe = iframe;
+  node._mesh2motionReady = false;
+  node._mesh2motionPendingSkeleton = null;
+  const readyHandler = (event) => {
+    var _a, _b, _c, _d;
+    if (event.source !== iframe.contentWindow) return;
+    if (((_a = event.data) == null ? void 0 : _a.type) === "mesh2motion:ready") {
+      node._mesh2motionReady = true;
+      if (node._mesh2motionPendingSkeleton) {
+        (_b = iframe.contentWindow) == null ? void 0 : _b.postMessage(
+          { type: "mesh2motion:setSkeletonType", data: { skeleton_type: node._mesh2motionPendingSkeleton } },
+          "*"
+        );
+        node._mesh2motionPendingSkeleton = null;
+      }
+      const showWidget = (_c = node.widgets) == null ? void 0 : _c.find((w22) => w22.name === "show_animations");
+      if (showWidget) {
+        (_d = iframe.contentWindow) == null ? void 0 : _d.postMessage(
+          { type: "mesh2motion:setPanelVisible", data: { visible: !!showWidget.value } },
+          "*"
+        );
+      }
+    }
+  };
+  window.addEventListener("message", readyHandler);
+  const hookSkeletonWidget = () => {
+    var _a;
+    const skeletonWidget = (_a = node.widgets) == null ? void 0 : _a.find((w22) => w22.name === "skeleton_type");
+    if (skeletonWidget) {
+      const origCallback = skeletonWidget.callback;
+      skeletonWidget.callback = (value) => {
+        var _a2;
+        origCallback == null ? void 0 : origCallback(value);
+        if (node._mesh2motionReady) {
+          (_a2 = iframe.contentWindow) == null ? void 0 : _a2.postMessage(
+            { type: "mesh2motion:setSkeletonType", data: { skeleton_type: value } },
+            "*"
+          );
+        } else {
+          node._mesh2motionPendingSkeleton = value;
+        }
+      };
+    }
+  };
+  const hookShowAnimationsWidget = () => {
+    var _a;
+    const showWidget = (_a = node.widgets) == null ? void 0 : _a.find((w22) => w22.name === "show_animations");
+    if (showWidget) {
+      const origCallback = showWidget.callback;
+      showWidget.callback = (value) => {
+        var _a2;
+        origCallback == null ? void 0 : origCallback(value);
+        if (node._mesh2motionReady) {
+          (_a2 = iframe.contentWindow) == null ? void 0 : _a2.postMessage(
+            { type: "mesh2motion:setPanelVisible", data: { visible: value } },
+            "*"
+          );
+        }
+      };
+    }
+  };
+  const hookBooleanWidget = (widgetName, messageType) => {
+    var _a;
+    const widget = (_a = node.widgets) == null ? void 0 : _a.find((w22) => w22.name === widgetName);
+    if (widget) {
+      const origCallback = widget.callback;
+      widget.callback = (value) => {
+        var _a2;
+        origCallback == null ? void 0 : origCallback(value);
+        if (node._mesh2motionReady) {
+          (_a2 = iframe.contentWindow) == null ? void 0 : _a2.postMessage(
+            { type: messageType, data: { value } },
+            "*"
+          );
+        }
+      };
+    }
+  };
+  setTimeout(() => {
+    hookSkeletonWidget();
+    hookShowAnimationsWidget();
+    hookBooleanWidget("show_skeleton", "mesh2motion:setShowSkeleton");
+    hookBooleanWidget("mirror_animations", "mesh2motion:setMirrorAnimations");
+  }, 100);
+  node.addDOMWidget("mesh2motion_view", "mesh2motion-explore", container, {
+    getMinHeight: () => 450,
+    hideOnZoom: false,
+    serialize: false
+  });
+  const imageWidget = node.addWidget("text", "image", "", () => {
+  });
+  imageWidget.type = "hidden";
+  imageWidget.serialize = true;
+  imageWidget.serializeValue = async () => {
+    try {
+      const dataUrl = await captureFromMesh2MotionIframe(node._mesh2motionIframe);
+      const result = await uploadMesh2MotionTempImage(dataUrl);
+      return `mesh2motion/${result.name} [temp]`;
+    } catch (err) {
+      console.error("[Mesh2Motion] Capture failed:", err);
+      return "";
+    }
+  };
+  node.addWidget("button", "Fullscreen", "fullscreen", () => {
+    openMesh2MotionExplore();
+  });
+  const [w2, h2] = node.size;
+  node.setSize([Math.max(w2, 500), Math.max(h2, 700)]);
+}
+function createMesh2MotionCreateWidget(node) {
+  const container = document.createElement("div");
+  container.style.cssText = "width:100%;height:100%;position:relative;overflow:hidden;";
+  const iframe = document.createElement("iframe");
+  iframe.src = "/mesh2motion/create-comfyui.html?comfyui=true&theme=dark";
+  iframe.style.cssText = "width:100%;height:100%;border:none;display:block;";
+  iframe.allow = "cross-origin-isolated";
+  container.appendChild(iframe);
+  node._mesh2motionIframe = iframe;
+  let iframeReady = false;
+  let pendingModelUrl = null;
+  const messageHandler = (event) => {
+    var _a, _b;
+    if (event.source !== iframe.contentWindow) return;
+    if (((_a = event.data) == null ? void 0 : _a.type) === "mesh2motion:ready") {
+      iframeReady = true;
+      if (pendingModelUrl) {
+        (_b = iframe.contentWindow) == null ? void 0 : _b.postMessage(
+          { type: "comfyui:loadModel", data: { url: pendingModelUrl } },
+          "*"
+        );
+        pendingModelUrl = null;
+      }
+    }
+  };
+  window.addEventListener("message", messageHandler);
+  function loadModelIntoIframe(filename) {
+    var _a;
+    if (!filename || filename === "none") return;
+    const params = new URLSearchParams({
+      filename,
+      type: "input",
+      subfolder: ""
+    });
+    const modelUrl = api.apiURL(`/view?${params.toString()}`);
+    if (iframeReady) {
+      (_a = iframe.contentWindow) == null ? void 0 : _a.postMessage(
+        { type: "comfyui:loadModel", data: { url: modelUrl } },
+        "*"
+      );
+    } else {
+      pendingModelUrl = modelUrl;
+    }
+  }
+  const checkModelWidget = () => {
+    var _a;
+    const modelWidget = (_a = node.widgets) == null ? void 0 : _a.find((w22) => w22.name === "model_file");
+    if (modelWidget) {
+      const origCallback = modelWidget.callback;
+      modelWidget.callback = (value) => {
+        origCallback == null ? void 0 : origCallback(value);
+        loadModelIntoIframe(value);
+      };
+      if (modelWidget.value && modelWidget.value !== "none") {
+        loadModelIntoIframe(modelWidget.value);
+      }
+    }
+  };
+  setTimeout(checkModelWidget, 100);
+  node.addDOMWidget("mesh2motion_view", "mesh2motion-create", container, {
+    getMinHeight: () => 450,
+    hideOnZoom: false,
+    serialize: false
+  });
+  const imageWidget = node.addWidget("text", "image", "", () => {
+  });
+  imageWidget.type = "hidden";
+  imageWidget.serialize = true;
+  imageWidget.serializeValue = async () => {
+    try {
+      const dataUrl = await captureFromMesh2MotionIframe(node._mesh2motionIframe);
+      const result = await uploadMesh2MotionTempImage(dataUrl);
+      return `mesh2motion/${result.name} [temp]`;
+    } catch (err) {
+      console.error("[Mesh2Motion] Create capture failed:", err);
+      return "";
+    }
+  };
+  node.addWidget("button", "Fullscreen", "fullscreen", () => {
+    openMesh2MotionEditor();
+  });
+  const [w2, h2] = node.size;
+  node.setSize([Math.max(w2, 500), Math.max(h2, 700)]);
+}
 app.registerExtension({
   name: "ComfyUI.Mesh2Motion",
   setup() {
@@ -17311,6 +17568,14 @@ app.registerExtension({
       action: () => openMesh2MotionEditor()
     });
     (_a = app.menu) == null ? void 0 : _a.settingsGroup.append(button);
+  },
+  nodeCreated(node) {
+    var _a, _b;
+    if (((_a = node.constructor) == null ? void 0 : _a.comfyClass) === "Mesh2MotionExplore") {
+      createMesh2MotionExploreWidget(node);
+    } else if (((_b = node.constructor) == null ? void 0 : _b.comfyClass) === "Mesh2MotionCreate") {
+      createMesh2MotionCreateWidget(node);
+    }
   },
   getNodeMenuItems(node) {
     var _a;

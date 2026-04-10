@@ -5,7 +5,7 @@ A ComfyUI extension that integrates Mesh2Motion 3D editor for rigging and animat
 
 import os
 import mimetypes
-import nodes
+import nodes as comfy_nodes
 from aiohttp import web
 from pathlib import Path
 
@@ -17,11 +17,9 @@ mimetypes.add_type('model/gltf+json', '.gltf')
 
 # Web directory for JavaScript extension
 js_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "js")
-nodes.EXTENSION_WEB_DIRS["ComfyUI-mesh2motion"] = js_dir
+comfy_nodes.EXTENSION_WEB_DIRS["ComfyUI-mesh2motion"] = js_dir
 
-# No custom nodes for this extension - it's a pure UI extension
-NODE_CLASS_MAPPINGS = {}
-NODE_DISPLAY_NAME_MAPPINGS = {}
+from .nodes import NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS
 
 __all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS']
 

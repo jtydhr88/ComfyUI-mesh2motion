@@ -10,6 +10,7 @@ import { app } from '../../../scripts/app.js'
 // @ts-ignore - ComfyUI external module
 import { api } from '../../../scripts/api.js'
 
+
 declare global {
   interface Window {
     comfyAPI: {
@@ -247,6 +248,29 @@ async function handleSaveToComfyUI(
     }
 
     console.log('[Mesh2Motion] Model saved successfully:', result)
+
+    // If there's an active editor task from a ComfyUI node, complete it
+    const editorTaskId = (window as any).__mesh2motion_editor_task_id
+    if (editorTaskId) {
+      const filePath = result.subfolder
+        ? `${result.subfolder}/${result.name}`
+        : result.name
+      try {
+        await api.fetchApi('/mesh2motion/api/task-complete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            task_id: editorTaskId,
+            status: 'ok',
+            file_path: filePath,
+          }),
+        })
+        console.log(`[Mesh2Motion] Editor task ${editorTaskId} completed`)
+      } catch (err) {
+        console.error('[Mesh2Motion] Failed to complete editor task:', err)
+      }
+      delete (window as any).__mesh2motion_editor_task_id
+    }
   } catch (error) {
     console.error('[Mesh2Motion] Failed to save model:', error)
     throw error
@@ -398,6 +422,277 @@ function openMesh2MotionExplore(node?: ImageNode): void {
   instance.openExplore(node as unknown as Model3DNode)
 }
 
+// ── Mesh2MotionExplore node: embedded 3D scene + screenshot output ──────────
+
+function captureFromMesh2MotionIframe(iframe: HTMLIFrameElement): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      window.removeEventListener('message', handler)
+      reject(new Error('Mesh2Motion capture timeout'))
+    }, 15000)
+
+    const handler = (event: MessageEvent) => {
+      if (event.source !== iframe.contentWindow) return
+      if (event.data?.type === 'mesh2motion:captureResult') {
+        clearTimeout(timeout)
+        window.removeEventListener('message', handler)
+        resolve(event.data.data as string)
+      }
+    }
+
+    window.addEventListener('message', handler)
+    iframe.contentWindow?.postMessage({ type: 'mesh2motion:capture' }, '*')
+  })
+}
+
+async function uploadMesh2MotionTempImage(dataUrl: string): Promise<{ name: string }> {
+  const blob = await fetch(dataUrl).then((r) => r.blob())
+  const name = `mesh2motion_${Date.now()}.png`
+  const file = new File([blob], name, { type: 'image/png' })
+
+  const body = new FormData()
+  body.append('image', file)
+  body.append('subfolder', 'mesh2motion')
+  body.append('type', 'temp')
+
+  const resp = await api.fetchApi('/upload/image', {
+    method: 'POST',
+    body,
+  })
+
+  if (resp.status !== 200) {
+    throw new Error(`Upload failed: ${resp.status}`)
+  }
+
+  return await resp.json()
+}
+
+function createMesh2MotionExploreWidget(node: any) {
+  const container = document.createElement('div')
+  container.style.cssText = 'width:100%;height:100%;position:relative;overflow:hidden;'
+
+  const iframe = document.createElement('iframe')
+  iframe.src = '/mesh2motion/index-comfyui.html?comfyui=true&theme=dark'
+  iframe.style.cssText = 'width:100%;height:100%;border:none;display:block;'
+  iframe.allow = 'cross-origin-isolated'
+  container.appendChild(iframe)
+
+  node._mesh2motionIframe = iframe
+  node._mesh2motionReady = false
+  node._mesh2motionPendingSkeleton = null as string | null
+
+  // Listen for iframe ready
+  const readyHandler = (event: MessageEvent) => {
+    if (event.source !== iframe.contentWindow) return
+    if (event.data?.type === 'mesh2motion:ready') {
+      node._mesh2motionReady = true
+      // Apply pending skeleton change
+      if (node._mesh2motionPendingSkeleton) {
+        iframe.contentWindow?.postMessage(
+          { type: 'mesh2motion:setSkeletonType', data: { skeleton_type: node._mesh2motionPendingSkeleton } },
+          '*'
+        )
+        node._mesh2motionPendingSkeleton = null
+      }
+      // Apply initial panel state from the show_animations widget
+      const showWidget = node.widgets?.find((w: any) => w.name === 'show_animations')
+      if (showWidget) {
+        iframe.contentWindow?.postMessage(
+          { type: 'mesh2motion:setPanelVisible', data: { visible: !!showWidget.value } },
+          '*'
+        )
+      }
+    }
+  }
+  window.addEventListener('message', readyHandler)
+
+  // Wire skeleton_type widget → iframe
+  const hookSkeletonWidget = () => {
+    const skeletonWidget = node.widgets?.find((w: any) => w.name === 'skeleton_type')
+    if (skeletonWidget) {
+      const origCallback = skeletonWidget.callback
+      skeletonWidget.callback = (value: string) => {
+        origCallback?.(value)
+        if (node._mesh2motionReady) {
+          iframe.contentWindow?.postMessage(
+            { type: 'mesh2motion:setSkeletonType', data: { skeleton_type: value } },
+            '*'
+          )
+        } else {
+          node._mesh2motionPendingSkeleton = value
+        }
+      }
+    }
+  }
+
+  // Wire show_animations widget → iframe panel toggle
+  const hookShowAnimationsWidget = () => {
+    const showWidget = node.widgets?.find((w: any) => w.name === 'show_animations')
+    if (showWidget) {
+      const origCallback = showWidget.callback
+      showWidget.callback = (value: boolean) => {
+        origCallback?.(value)
+        if (node._mesh2motionReady) {
+          iframe.contentWindow?.postMessage(
+            { type: 'mesh2motion:setPanelVisible', data: { visible: value } },
+            '*'
+          )
+        }
+      }
+    }
+  }
+
+  // Wire show_skeleton widget → iframe checkbox
+  const hookBooleanWidget = (widgetName: string, messageType: string) => {
+    const widget = node.widgets?.find((w: any) => w.name === widgetName)
+    if (widget) {
+      const origCallback = widget.callback
+      widget.callback = (value: boolean) => {
+        origCallback?.(value)
+        if (node._mesh2motionReady) {
+          iframe.contentWindow?.postMessage(
+            { type: messageType, data: { value } },
+            '*'
+          )
+        }
+      }
+    }
+  }
+
+  setTimeout(() => {
+    hookSkeletonWidget()
+    hookShowAnimationsWidget()
+    hookBooleanWidget('show_skeleton', 'mesh2motion:setShowSkeleton')
+    hookBooleanWidget('mirror_animations', 'mesh2motion:setMirrorAnimations')
+  }, 100)
+
+  node.addDOMWidget('mesh2motion_view', 'mesh2motion-explore', container, {
+    getMinHeight: () => 450,
+    hideOnZoom: false,
+    serialize: false,
+  })
+
+  // Hidden image widget — serializeValue captures screenshot on execution
+  const imageWidget = node.addWidget('text', 'image', '', () => {})
+  imageWidget.type = 'hidden'
+  imageWidget.serialize = true
+  imageWidget.serializeValue = async () => {
+    try {
+      const dataUrl = await captureFromMesh2MotionIframe(node._mesh2motionIframe)
+      const result = await uploadMesh2MotionTempImage(dataUrl)
+      return `mesh2motion/${result.name} [temp]`
+    } catch (err) {
+      console.error('[Mesh2Motion] Capture failed:', err)
+      return ''
+    }
+  }
+
+  node.addWidget('button', 'Fullscreen', 'fullscreen', () => {
+    openMesh2MotionExplore()
+  })
+
+  const [w, h] = node.size
+  node.setSize([Math.max(w, 500), Math.max(h, 700)])
+}
+
+function createMesh2MotionCreateWidget(node: any) {
+  const container = document.createElement('div')
+  container.style.cssText = 'width:100%;height:100%;position:relative;overflow:hidden;'
+
+  const iframe = document.createElement('iframe')
+  iframe.src = '/mesh2motion/create-comfyui.html?comfyui=true&theme=dark'
+  iframe.style.cssText = 'width:100%;height:100%;border:none;display:block;'
+  iframe.allow = 'cross-origin-isolated'
+  container.appendChild(iframe)
+
+  node._mesh2motionIframe = iframe
+
+  // Track iframe readiness
+  let iframeReady = false
+  let pendingModelUrl: string | null = null
+
+  const messageHandler = (event: MessageEvent) => {
+    if (event.source !== iframe.contentWindow) return
+    if (event.data?.type === 'mesh2motion:ready') {
+      iframeReady = true
+      if (pendingModelUrl) {
+        iframe.contentWindow?.postMessage(
+          { type: 'comfyui:loadModel', data: { url: pendingModelUrl } },
+          '*'
+        )
+        pendingModelUrl = null
+      }
+    }
+  }
+  window.addEventListener('message', messageHandler)
+
+  // Load model into iframe when model_file widget changes
+  function loadModelIntoIframe(filename: string) {
+    if (!filename || filename === 'none') return
+    const params = new URLSearchParams({
+      filename,
+      type: 'input',
+      subfolder: '',
+    })
+    const modelUrl = api.apiURL(`/view?${params.toString()}`)
+
+    if (iframeReady) {
+      iframe.contentWindow?.postMessage(
+        { type: 'comfyui:loadModel', data: { url: modelUrl } },
+        '*'
+      )
+    } else {
+      pendingModelUrl = modelUrl
+    }
+  }
+
+  // Watch model_file widget for changes
+  const checkModelWidget = () => {
+    const modelWidget = node.widgets?.find((w: any) => w.name === 'model_file')
+    if (modelWidget) {
+      const origCallback = modelWidget.callback
+      modelWidget.callback = (value: string) => {
+        origCallback?.(value)
+        loadModelIntoIframe(value)
+      }
+      // Load initial value if any
+      if (modelWidget.value && modelWidget.value !== 'none') {
+        loadModelIntoIframe(modelWidget.value)
+      }
+    }
+  }
+  // Defer to ensure ComfyUI has created the model_file widget
+  setTimeout(checkModelWidget, 100)
+
+  node.addDOMWidget('mesh2motion_view', 'mesh2motion-create', container, {
+    getMinHeight: () => 450,
+    hideOnZoom: false,
+    serialize: false,
+  })
+
+  // Hidden image widget — serializeValue captures screenshot on execution
+  const imageWidget = node.addWidget('text', 'image', '', () => {})
+  imageWidget.type = 'hidden'
+  imageWidget.serialize = true
+  imageWidget.serializeValue = async () => {
+    try {
+      const dataUrl = await captureFromMesh2MotionIframe(node._mesh2motionIframe)
+      const result = await uploadMesh2MotionTempImage(dataUrl)
+      return `mesh2motion/${result.name} [temp]`
+    } catch (err) {
+      console.error('[Mesh2Motion] Create capture failed:', err)
+      return ''
+    }
+  }
+
+  node.addWidget('button', 'Fullscreen', 'fullscreen', () => {
+    openMesh2MotionEditor()
+  })
+
+  const [w, h] = node.size
+  node.setSize([Math.max(w, 500), Math.max(h, 700)])
+}
+
 app.registerExtension({
   name: 'ComfyUI.Mesh2Motion',
 
@@ -413,6 +708,14 @@ app.registerExtension({
     })
 
     app.menu?.settingsGroup.append(button)
+  },
+
+  nodeCreated(node: any) {
+    if (node.constructor?.comfyClass === 'Mesh2MotionExplore') {
+      createMesh2MotionExploreWidget(node)
+    } else if (node.constructor?.comfyClass === 'Mesh2MotionCreate') {
+      createMesh2MotionCreateWidget(node)
+    }
   },
 
   getNodeMenuItems(node: unknown) {
