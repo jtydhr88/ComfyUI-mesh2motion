@@ -29,6 +29,7 @@ class Mesh2MotionExplore:
                 "show_animations": ("BOOLEAN", {"default": True}),
                 "show_skeleton": ("BOOLEAN", {"default": False}),
                 "mirror_animations": ("BOOLEAN", {"default": False}),
+                "preview_output": ("BOOLEAN", {"default": False}),
                 "width": ("INT", {"default": 1024, "min": 1, "max": 4096, "step": 1}),
                 "height": ("INT", {"default": 1024, "min": 1, "max": 4096, "step": 1}),
             },
@@ -43,7 +44,7 @@ class Mesh2MotionExplore:
     OUTPUT_NODE = True
     CATEGORY = "3d/mesh2motion"
 
-    def run(self, skeleton_type="human", show_animations=True, show_skeleton=False, mirror_animations=False, width=1024, height=1024, image="", **kwargs):
+    def run(self, skeleton_type="human", show_animations=True, show_skeleton=False, mirror_animations=False, preview_output=False, width=1024, height=1024, image="", **kwargs):
         if not image:
             return (torch.zeros(1, height, width, 3),)
 
