@@ -17441,11 +17441,48 @@ function createMesh2MotionExploreWidget(node) {
       };
     }
   };
+  const sendPreviewState = () => {
+    var _a, _b, _c, _d;
+    if (!node._mesh2motionReady) return;
+    const previewWidget = (_a = node.widgets) == null ? void 0 : _a.find((w22) => w22.name === "preview_output");
+    const widthWidget = (_b = node.widgets) == null ? void 0 : _b.find((w22) => w22.name === "width");
+    const heightWidget = (_c = node.widgets) == null ? void 0 : _c.find((w22) => w22.name === "height");
+    (_d = iframe.contentWindow) == null ? void 0 : _d.postMessage({
+      type: "mesh2motion:setPreviewOverlay",
+      data: {
+        enabled: !!(previewWidget == null ? void 0 : previewWidget.value),
+        width: (widthWidget == null ? void 0 : widthWidget.value) ?? 1024,
+        height: (heightWidget == null ? void 0 : heightWidget.value) ?? 1024
+      }
+    }, "*");
+  };
+  const hookPreviewWidgets = () => {
+    var _a, _b, _c;
+    const widthWidget = (_a = node.widgets) == null ? void 0 : _a.find((w22) => w22.name === "width");
+    const heightWidget = (_b = node.widgets) == null ? void 0 : _b.find((w22) => w22.name === "height");
+    const previewWidget = (_c = node.widgets) == null ? void 0 : _c.find((w22) => w22.name === "preview_output");
+    if (widthWidget) {
+      widthWidget.callback = (value) => {
+        sendPreviewState();
+      };
+    }
+    if (heightWidget) {
+      heightWidget.callback = (value) => {
+        sendPreviewState();
+      };
+    }
+    if (previewWidget) {
+      previewWidget.callback = (value) => {
+        sendPreviewState();
+      };
+    }
+  };
   setTimeout(() => {
     hookSkeletonWidget();
     hookShowAnimationsWidget();
     hookBooleanWidget("show_skeleton", "mesh2motion:setShowSkeleton");
     hookBooleanWidget("mirror_animations", "mesh2motion:setMirrorAnimations");
+    hookPreviewWidgets();
   }, 100);
   node.addDOMWidget("mesh2motion_view", "mesh2motion-explore", container, {
     getMinHeight: () => 450,

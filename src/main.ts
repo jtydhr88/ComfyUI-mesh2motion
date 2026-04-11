@@ -559,11 +559,46 @@ function createMesh2MotionExploreWidget(node: any) {
     }
   }
 
+  // Send current preview overlay state (enabled + aspect ratio) to iframe
+  const sendPreviewState = () => {
+    if (!node._mesh2motionReady) return
+    const previewWidget = node.widgets?.find((w: any) => w.name === 'preview_output')
+    const widthWidget = node.widgets?.find((w: any) => w.name === 'width')
+    const heightWidget = node.widgets?.find((w: any) => w.name === 'height')
+    iframe.contentWindow?.postMessage({
+      type: 'mesh2motion:setPreviewOverlay',
+      data: {
+        enabled: !!previewWidget?.value,
+        width: widthWidget?.value ?? 1024,
+        height: heightWidget?.value ?? 1024,
+      }
+    }, '*')
+  }
+
+  // Hook preview_output, width, height — all affect the overlay
+  // Same pattern as Load3D: directly assign widget.callback
+  const hookPreviewWidgets = () => {
+    const widthWidget = node.widgets?.find((w: any) => w.name === 'width')
+    const heightWidget = node.widgets?.find((w: any) => w.name === 'height')
+    const previewWidget = node.widgets?.find((w: any) => w.name === 'preview_output')
+
+    if (widthWidget) {
+      widthWidget.callback = (value: number) => { sendPreviewState() }
+    }
+    if (heightWidget) {
+      heightWidget.callback = (value: number) => { sendPreviewState() }
+    }
+    if (previewWidget) {
+      previewWidget.callback = (value: boolean) => { sendPreviewState() }
+    }
+  }
+
   setTimeout(() => {
     hookSkeletonWidget()
     hookShowAnimationsWidget()
     hookBooleanWidget('show_skeleton', 'mesh2motion:setShowSkeleton')
     hookBooleanWidget('mirror_animations', 'mesh2motion:setMirrorAnimations')
+    hookPreviewWidgets()
   }, 100)
 
   node.addDOMWidget('mesh2motion_view', 'mesh2motion-explore', container, {
