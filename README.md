@@ -6,11 +6,7 @@ directly inside a node. Pick a rig, pick a camera move, tune the shot,
 and the node emits an `IMAGE` (single frame) + `VIDEO` (rendered
 camera move) that flow into the rest of your ComfyUI graph.
 
-<!-- GitHub auto-plays <video> tags whose src points at a raw file in
-     the same repo. Fall back to a direct link for renderers that don't. -->
-<video src="docs/hero.mp4" controls muted loop playsinline width="100%"></video>
-
-[▶ hero.mp4](docs/hero.mp4)
+https://github.com/user-attachments/assets/11b87a68-32d7-45ba-b59c-4a6bb950310b
 
 ---
 
