@@ -7,14 +7,12 @@
     <link rel="icon" type="image/png" href="images/favicon.png"/>
         <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <script type="module" crossorigin src="/mesh2motion/assets/index-BMIyG-05.js"></script>
-  <link rel="modulepreload" crossorigin href="/mesh2motion/assets/dialog-2hXlMv53.js">
-  <link rel="modulepreload" crossorigin href="/mesh2motion/assets/export-overlay-7iEGdSS2.js">
-  <link rel="stylesheet" crossorigin href="/mesh2motion/assets/dialog-Dm-Yv17O.css">
-  <link rel="stylesheet" crossorigin href="/mesh2motion/assets/export-overlay-BsAGLCSz.css">
-  <link rel="stylesheet" crossorigin href="/mesh2motion/assets/index-BWWBWUA4.css">
+  <script type="module" crossorigin src="/mesh2motion/assets/index-B_Ph7DU8.js"></script>
+  <link rel="modulepreload" crossorigin href="/mesh2motion/assets/dialog-Bjq8YBRw.js">
+  <link rel="stylesheet" crossorigin href="/mesh2motion/assets/dialog-BnTh1xJE.css">
+  <link rel="stylesheet" crossorigin href="/mesh2motion/assets/index-Dvu2eH-y.css">
 </head>
-<body style="margin: 0">
+<body style="margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden;">
     <!-- Script files-->
 
     <!-- Stylesheets-->
@@ -25,7 +23,6 @@
         <div style="display: inline-flex; align-items: center;">
             <a href="https://mesh2motion.org"><img src="images/mesh2motion.svg" width="200" /></a>
             <span class="active-nav-item">Explore</span>
-            <a href="create-comfyui.html">Create</a>
             <a href="retarget-comfyui.html">Retarget</a>
         </div>
 
@@ -57,13 +54,13 @@
         </div>
     </div>
 
-    <div class="model-selection-section">
-        <button id="load-human-model-button">Human</button>
-        <button id="load-fox-model-button">Fox</button>
-        <button id="load-bird-model-button">Bird</button>
-        <button id="load-dragon-model-button">Dragon</button>
+    <!-- Left-side skeleton picker panel (sibling of #tool-panel; toggled
+         by the left-edge activity bar). MarketingBootstrap populates
+         .model-selection-section at boot. -->
+    <div id="skeleton-panel">
+        <div class="skeleton-panel-header">Skeleton</div>
+        <div class="model-selection-section"></div>
     </div>
-
 
     <div id="tool-panel">
         <!-- create a radio button group. There are two options. Move Skeleton, Rotate Mesh -->
@@ -184,25 +181,58 @@
 
     </div> <!-- end tool-panel-->
 
-    <!-- Free-floating Animation Player -->
-    <div id="animation-player">
-        <div id="current-animation-container">
-            <span id="current-animation-name">No animation selected</span>
-        </div>
+    <!-- Legacy animation player (kept hidden for AnimationPlayer.ts DOM refs) -->
+    <div id="animation-player" style="display:none">
+        <div id="current-animation-container"><span id="current-animation-name"></span></div>
         <div id="play-controls">
-            <button id="play-pause-button" class="animation-control-button" disabled>
-                <span class="material-symbols-outlined">play_arrow</span>
-            </button>
-            <span>
-                <span id="current-time">0f</span> / 
-                <span id="total-time">0f</span>
-            </span>
+            <button id="play-pause-button" class="animation-control-button" disabled><span class="material-symbols-outlined">play_arrow</span></button>
+            <span><span id="current-time">0</span>/<span id="total-time">0</span></span>
             <input type="range" id="animation-scrubber" min="0" max="100" value="0" disabled>
         </div>
-
     </div>
 
-    <!-- 3d view control hit box. It is just a container to help with 3d view controls. -->
+    <!-- Camera preset panel (sibling of #tool-panel; they're mutually
+         exclusive, driven by the activity bar on the right edge). -->
+    <div id="camera-preset-panel" class="collapsed">
+        <!-- populated by CameraPresetPanel.ts in Step 2 -->
+        <div class="camera-preset-panel-header">Camera Presets</div>
+        <div id="camera-preset-items" class="camera-preset-items"></div>
+    </div>
+
+    <!-- Per-preset tuning panel (sibling of the preset list). -->
+    <div id="camera-tune-panel" class="collapsed">
+        <div class="camera-tune-panel-header">Camera Tuning</div>
+        <div id="camera-tune-content"></div>
+    </div>
+
+    <!-- Right-edge activity bar: one button per panel (animations / cameras / tuning). -->
+    <div id="activity-bar">
+        <button id="activity-animations" class="activity-btn" data-panel="animations" title="Animations">
+            <span class="material-symbols-outlined">animation</span>
+        </button>
+        <button id="activity-camera" class="activity-btn" data-panel="camera" title="Camera presets">
+            <span class="material-symbols-outlined">videocam</span>
+        </button>
+        <button id="activity-camera-tune" class="activity-btn" data-panel="tune" title="Camera tuning">
+            <span class="material-symbols-outlined">tune</span>
+        </button>
+    </div>
+
+    <!-- Left-edge activity bar. One button for now (skeleton); more to come
+         (e.g. per-preset camera tuning). -->
+    <div id="activity-bar-left">
+        <button id="activity-skeleton" class="activity-btn" data-panel="skeleton" title="Skeleton">
+            <span class="material-symbols-outlined">accessibility_new</span>
+        </button>
+    </div>
+
+    <!-- 3D viewport (Three.js canvas goes here) -->
+    <div id="viewport-container"></div>
+
+    <!-- Timeline sits below 3D canvas -->
+    <div id="timeline-container"></div>
+
+    <!-- 3d view control hit box -->
     <div id="view-control-hitbox"></div>
 
 

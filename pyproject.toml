@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-mesh2motion"
 description = "Integrates Mesh2motion into ComfyUI for 3D model animation rigging"
-version = "0.4.2"
+version = "1.0.0"
 license = "MIT"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -14,4 +14,4 @@ Repository = "https://github.com/jtydhr88/ComfyUI-mesh2motion"
 PublisherId = "jtydhr88"
 DisplayName = "Comfyui Mesh2Motion"
 Icon = ""
-includes = ['js']
+includes = ['js', 'mesh2motion-ui', 'camera-preset-pack', 'locales']

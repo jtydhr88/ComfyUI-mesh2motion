@@ -1,1 +1,0 @@
-function e(){new URLSearchParams(window.location.search).get(`comfyui`)===`true`&&document.body.classList.add(`embedded`)}export{e as t};

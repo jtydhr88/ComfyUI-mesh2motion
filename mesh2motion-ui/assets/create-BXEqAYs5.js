@@ -1,1 +1,0 @@
-import{f as e,t}from"./dialog-2hXlMv53.js";import{t as n}from"./export-overlay-7iEGdSS2.js";var r=class{constructor(){this.mesh2motion_engine=new t,e().setEngine(this.mesh2motion_engine)}};document.addEventListener(`DOMContentLoaded`,()=>{n()}),new r;

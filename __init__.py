@@ -8,6 +8,9 @@ import mimetypes
 import nodes as comfy_nodes
 from aiohttp import web
 from pathlib import Path
+from typing_extensions import override
+from comfy_api.latest import ComfyExtension, io
+from .nodes import Mesh2MotionExplore
 
 # Ensure common MIME types are registered
 mimetypes.add_type('application/javascript', '.js')
@@ -19,9 +22,15 @@ mimetypes.add_type('model/gltf+json', '.gltf')
 js_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "js")
 comfy_nodes.EXTENSION_WEB_DIRS["ComfyUI-mesh2motion"] = js_dir
 
-from .nodes import NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS
 
-__all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS']
+class Mesh2MotionExtension(ComfyExtension):
+    @override
+    async def get_node_list(self) -> list[type[io.ComfyNode]]:
+        return [Mesh2MotionExplore]
+
+
+async def comfy_entrypoint() -> Mesh2MotionExtension:
+    return Mesh2MotionExtension()
 
 # Register HTTP routes for Mesh2Motion UI
 from server import PromptServer
@@ -29,6 +38,19 @@ from server import PromptServer
 routes = PromptServer.instance.routes
 
 MESH2MOTION_UI_PATH = Path(__file__).parent / 'mesh2motion-ui'
+
+# Resolve once at module load for path-traversal checks
+_MESH2MOTION_UI_REAL = MESH2MOTION_UI_PATH.resolve()
+
+
+def _is_safe_child(base_real: Path, candidate: Path) -> bool:
+    """Return True if candidate resolves to a path inside base_real."""
+    try:
+        candidate.resolve().relative_to(base_real)
+        return True
+    except ValueError:
+        return False
+
 
 @routes.get('/mesh2motion')
 async def serve_mesh2motion_index(request):
@@ -48,16 +70,15 @@ async def serve_mesh2motion_index(request):
 async def serve_mesh2motion_static(request):
     """Serve static files for Mesh2Motion UI"""
     path = request.match_info.get('path', '')
-
-    # Security check
-    if '..' in path or path.startswith('/'):
-        return web.Response(text="Invalid path", status=400)
-
     file_path = MESH2MOTION_UI_PATH / path
+
+    # Security: ensure resolved path stays inside the UI directory
+    if not _is_safe_child(_MESH2MOTION_UI_REAL, file_path):
+        return web.Response(text="Invalid path", status=403)
 
     # If it's a directory, try to serve index files
     if file_path.is_dir():
-        for index_name in ['index-comfyui.html', 'index.html', 'create-comfyui.html', 'create.html', 'retarget-comfyui.html', 'retarget.html']:
+        for index_name in ['index-comfyui.html', 'index.html', 'retarget-comfyui.html', 'retarget.html']:
             index_path = file_path / index_name
             if index_path.exists():
                 return web.FileResponse(index_path)
