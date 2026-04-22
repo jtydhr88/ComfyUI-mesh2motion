@@ -258,11 +258,19 @@ export function createMesh2MotionExploreWidget(node: any) {
       const presetFile = node.properties?.['mesh2motion_camera_preset'] as string | null | undefined
       if (!presetFile) return null  // free mode: no video anyway
 
+      // tune-panel controls that affect captured frames (fovScale, reverse,
+      // pathScale, yaw, roll, offset) land in mesh2motion_preset_tuning[file].
+      // Speed is excluded because it's timeline-level and already covered by
+      // the timeline entry below.
+      const tuningMap = node.properties?.['mesh2motion_preset_tuning'] as Record<string, unknown> | undefined
+      const tuning = tuningMap?.[presetFile] ?? null
+
       const w = (name: string) => node.widgets?.find((x: any) => x.name === name)?.value
       return JSON.stringify({
         presetFile,
         skeleton: node.properties?.['mesh2motion_skeleton'] ?? null,
         timeline: node.properties?.['mesh2motion_timeline'] ?? null,
+        tuning,
         width:    w('width'),
         height:   w('height'),
         fps:      w('fps'),

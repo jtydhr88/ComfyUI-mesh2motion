@@ -15,14 +15,17 @@ https://github.com/user-attachments/assets/11b87a68-32d7-45ba-b59c-4a6bb950310b
 This is a deep rework of the original plugin. If you used an earlier
 version, expect the following:
 
-- **One node, not many.** Everything routes through a single
-  `Mesh2Motion Explore` node. Previous `Create`, `Preview`, `Save`
+- **One primary node.** Node-embedded editing routes through a single
+  `Mesh2Motion Explore` node; the old `Create` / `Preview` / `Save`
   variants are gone.
-- **No right-click "Open in Mesh2Motion".** No top-menu button. No
-  Vue-based dialog. The editor lives inside the node itself.
-- **All UI moved into the iframe.** Skeleton picker, camera preset
-  browser, tuning controls, timeline — every control the user needs
-  is inside the embedded editor.
+- **Right-click / top-menu open a separate "window" editor.** The
+  lightweight dialog path is back (1.1.0+) but it now loads its own
+  pages (`index-comfyui-window.html` / `create-comfyui-window.html`),
+  kept off the node-mode code path so the two never fight over DOM /
+  bridge state. No Vue / PrimeVue runtime anymore — plain DOM modal.
+- **All node-mode UI moved into the iframe.** Skeleton picker, camera
+  preset browser, tuning controls, timeline — every control the user
+  needs is inside the embedded editor.
 - **Full state persistence.** Everything the user picks or tunes is
   saved inside `node.properties`, so reloading the workflow restores
   the exact shot.
@@ -180,15 +183,102 @@ produces:
 
 - `IMAGE` — a single frame at the current playhead
 - `VIDEO` — the whole camera move, rendered off-screen at the target
-  resolution using WebCodecs (deterministic, not bound by compositor
-  frame pacing)
+  resolution
 
 The video capture is cached: re-queuing without changing any input
 that affects the captured frames short-circuits the render, so repeat
 runs are instant.
 
+#### Video encoder: WebCodecs vs MediaRecorder fallback
+
+The editor records video with WebCodecs `VideoEncoder` by default —
+it's deterministic (frame-by-frame from the WebGL backing buffer, no
+compositor round-trip) and materially faster than any alternative in
+the browser. When it's available, use it.
+
+`VideoEncoder` is missing in some environments though, so the editor
+automatically falls back to a `MediaRecorder` path on the same canvas.
+Known cases where the fallback kicks in:
+
+- **Safari < 17** — `VideoEncoder` shipped in Safari 17.
+- **Older Firefox** — WebCodecs encode is recent on Firefox (130+).
+- **Non-secure contexts on some browsers** — e.g. serving ComfyUI over
+  HTTP on a LAN IP like `http://192.168.x.x:8188`. Localhost and
+  `127.0.0.1` are Secure Contexts so WebCodecs works there. HTTPS or
+  localhost is the fix.
+
+The fallback produces the same webm (same resolution, same frame
+count, same fps) but is noticeably slower because each frame has to
+round-trip through the browser compositor before it reaches the
+recorder. **If video recording feels slow, that's why** — check the
+list above and, if possible, switch to HTTPS or run ComfyUI on
+localhost to get the WebCodecs path back.
+
 ---
 
+## Window mode (right-click / top-menu)
+
+Not every workflow is best served by an in-node iframe — sometimes you
+just want the full editor on top of the graph to sketch a pose or
+grab a reference render. The plugin exposes two entry points that open
+Mesh2Motion as a modal over ComfyUI instead of embedded inside a node:
+
+- **Top-menu `Mesh2Motion` button.** Appended to the ComfyUI menu's
+  settings group. Opens the Explore page; "Save Image" pushes a PNG
+  into the first `LoadImage` node on the graph.
+- **Right-click "Open in Mesh2Motion".**
+  - On `LoadImage`: opens Explore; saved image lands back on the
+    originating node.
+  - On `Load3D` / `Preview3D` / `SaveGLB` (and any other node whose
+    widget looks like it's holding a `.glb` / `.gltf` / `.fbx` /
+    `.obj`): opens the Create flow pre-loaded with that node's
+    model. Edit skeleton, bind pose, export; the saved GLB is
+    injected back into the node.
+
+Window mode runs on deliberately separate pages from the node mode
+(`index-comfyui-window.html` / `create-comfyui-window.html`) so the
+two paths never share DOM hooks or bridge state. The dialog talks to
+the iframe through a small `comfyui:*` postMessage protocol
+(`loadModel` / `requestExport` / `requestImageExport` / `setTheme`).
+
+---
+
+## Changelog
+
+### 1.1.0 — 2026-04-22
+
+- **Window mode restored.** Right-click `LoadImage` / `Load3D` /
+  `Preview3D` / `SaveGLB` → "Open in Mesh2Motion" opens a lightweight
+  vanilla-DOM modal (no Vue / PrimeVue dependency). A `Mesh2Motion`
+  button also lives on the ComfyUI top menu. Runs on its own
+  `*-comfyui-window.html` pages so node mode and window mode never
+  share state.
+- **MediaRecorder fallback for video capture.** The editor
+  auto-falls-back to `MediaRecorder` when `WebCodecs.VideoEncoder`
+  isn't available (Safari < 17, older Firefox, non-secure contexts
+  such as ComfyUI over HTTP on a LAN IP). Slower than WebCodecs but
+  video output now works everywhere `MediaRecorder` does.
+- **Video cache signature picks up all tune-panel edits.** Changing
+  FOV Scale / Reverse / Path Scale / Yaw / Roll / XYZ Offset now
+  correctly invalidates the cached webm so the next Queue re-renders.
+  Previously only Speed was honored (it rides on the timeline entry);
+  the other knobs were silently ignored and returned stale video.
+
+### 1.0.0
+
+- Converted from a multi-node + Vue-dialog layout into a single
+  `Mesh2MotionExplore` node with an embedded iframe.
+- Full state persistence via `node.properties` — skeleton, camera
+  preset, per-preset tuning, timeline state, panel open/closed,
+  timeline zoom.
+- First-class `VIDEO` output with WebCodecs deterministic recording,
+  user-settable `fps`, and input-hash caching that skips re-render
+  when inputs haven't changed.
+- Camera preset pack bundled into the build (116 presets across 8
+  intent-based categories) with a tuning panel (Speed / FOV Scale /
+  Path Scale / Yaw / Roll / Offset / Reverse / Loop).
+
+---
 
 ## License
 
