@@ -1,5 +1,11 @@
 # ComfyUI-mesh2motion
 
+<div align="center">
+
+English | [简体中文](./README_CN.md)
+
+</div>
+
 A ComfyUI custom node that embeds a heavily-modified fork of
 [Mesh2Motion](https://mesh2motion.org) as an interactive 3D editor
 directly inside a node. Pick a rig, pick a camera move, tune the shot,
@@ -220,25 +226,78 @@ localhost to get the WebCodecs path back.
 
 Not every workflow is best served by an in-node iframe — sometimes you
 just want the full editor on top of the graph to sketch a pose or
-grab a reference render. The plugin exposes two entry points that open
-Mesh2Motion as a modal over ComfyUI instead of embedded inside a node:
+grab a reference render. Window mode opens Mesh2Motion as a modal
+dialog over ComfyUI and, on close, pushes the result back into a
+ComfyUI node as if you had uploaded it yourself. It doesn't add
+anything to the workflow graph — it's a one-shot editor interaction.
+
+### Entry points
 
 - **Top-menu `Mesh2Motion` button.** Appended to the ComfyUI menu's
-  settings group. Opens the Explore page; "Save Image" pushes a PNG
-  into the first `LoadImage` node on the graph.
-- **Right-click "Open in Mesh2Motion".**
-  - On `LoadImage`: opens Explore; saved image lands back on the
-    originating node.
+  settings group. Opens the Explore page.
+- **Right-click → "Open in Mesh2Motion".**
+  - On `LoadImage`: opens the Explore page. Image saved from the
+    dialog lands back on this node.
   - On `Load3D` / `Preview3D` / `SaveGLB` (and any other node whose
-    widget looks like it's holding a `.glb` / `.gltf` / `.fbx` /
-    `.obj`): opens the Create flow pre-loaded with that node's
-    model. Edit skeleton, bind pose, export; the saved GLB is
-    injected back into the node.
+    widget is holding a `.glb` / `.gltf` / `.fbx` / `.obj`): opens
+    the Create page pre-loaded with that node's model.
 
-Window mode runs on deliberately separate pages from the node mode
-(`index-comfyui-window.html` / `create-comfyui-window.html`) so the
-two paths never share DOM hooks or bridge state. The dialog talks to
-the iframe through a small `comfyui:*` postMessage protocol
+### Dialog chrome
+
+The header of the modal has four things:
+
+- **Title** — shows whether you're in Explore or Create.
+- **Status line** — loading/export progress and error messages.
+- **Save Image** — triggers an image export (Explore flow).
+- **Save Model** — triggers a GLB export (Create flow).
+- **✕** — close without saving. Clicking the dimmed area around the
+  modal has the same effect.
+
+### Explore flow: rig + animation → image back to LoadImage
+
+1. Open the dialog from the top-menu `Mesh2Motion` button, or by
+   right-clicking a `LoadImage` node.
+2. Pick a character rig from the left-side model list (Human, Fox,
+   Bird, Dragon).
+3. Pick an animation from the right-side list. The playback bar at
+   the bottom lets you scrub to any frame.
+4. Position the camera with the mouse (left-drag = orbit, right-drag
+   = pan, wheel = zoom).
+5. Click **Save Image**. A crop overlay opens inside the iframe —
+   drag the crop box / resize to frame your shot, then confirm.
+6. The PNG is uploaded into ComfyUI's `input/mesh2motion/` folder,
+   and its path is written into the originating `LoadImage` widget
+   (or the first `LoadImage` on the graph, if you opened the dialog
+   from the top-menu button). The node's preview thumbnail refreshes
+   immediately.
+
+### Create flow: rig a 3D model → GLB back to the source node
+
+1. Right-click a node holding a 3D model (`Load3D`, `Preview3D`,
+   `SaveGLB`, or any node whose widget value ends in `.glb` /
+   `.gltf` / `.fbx` / `.obj`).
+2. The dialog opens on the Create page with your model pre-loaded.
+   If you prefer to start from scratch, use the top-menu `Mesh2Motion`
+   button instead and navigate to Create from the in-dialog nav.
+3. Rotate the model to face front (`X` / `Y` / `Z` buttons), raise
+   it onto the floor if needed, and pick a skeleton template that
+   matches its anatomy.
+4. Step into **Edit Skeleton**: drag each bone into place. Use the
+   Preview toggle to flip between textured and weight-painted
+   previews, and mirror left/right joints with the checkbox.
+5. **Bind pose** to commit the skeleton, then pick animations from
+   the list. A-pose correction and per-animation selection are in
+   the right panel.
+6. Click **Save Model**. The rigged + animated GLB is uploaded into
+   ComfyUI's `input/mesh2motion/` folder, and the originating node's
+   widget picks up the new path automatically.
+
+### Implementation note
+
+Window mode runs on deliberately separate pages from the node-embedded
+editor (`index-comfyui-window.html` / `create-comfyui-window.html`),
+so the two paths never share DOM hooks or bridge state. The dialog
+talks to the iframe through a small `comfyui:*` postMessage protocol
 (`loadModel` / `requestExport` / `requestImageExport` / `setTheme`).
 
 ---
