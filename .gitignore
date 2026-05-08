@@ -31,3 +31,7 @@ __pycache__
 
 qwenmultiangle
 node.zip
+
+# Local-only FBX test fixtures copied through mesh2motion-app's vite publicDir.
+# Large binaries used for development testing only; not part of the distribution.
+mesh2motion-ui/test-fbx/

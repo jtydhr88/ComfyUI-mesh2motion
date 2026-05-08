@@ -1,6 +1,54 @@
 import { POST_MESSAGE_ORIGIN } from './utils'
 import { captureFromMesh2MotionIframe, captureVideoFromMesh2MotionIframe, uploadMesh2MotionTempImage } from './capture'
 
+/**
+ * Persisted-project schema v2. Mirrors mesh2motion-app's
+ * src/lib/comfyui/ProjectState.ts — keep in sync. Bump PROJECT_STATE_VERSION
+ * on both sides if you change the shape.
+ */
+const PROJECT_STATE_VERSION = 2
+const PROJECT_KEY = 'mesh2motion_project'
+
+interface PersistedTrack {
+  id: string
+  kind: 'camera' | 'animation'
+  offset: number
+  speed: number
+  loop: boolean
+}
+
+interface ProjectStateV2 {
+  version: typeof PROJECT_STATE_VERSION
+  skeleton: string | null
+  cameraPreset: string | null
+  presetTuning: Record<string, unknown>
+  timeline: {
+    tracks: PersistedTrack[]
+    zoom: number
+    loopPlayback: boolean
+    startFrame: number
+    endFrame: number
+  }
+  panelState: { right: string | null; left: string | null }
+  animationIndex: number
+}
+
+/** Read the v2 project blob from node.properties. Returns null on a fresh
+ *  node (no saved project yet) or a version mismatch (treated as fresh). */
+function loadProject (props: Record<string, unknown> | undefined): ProjectStateV2 | null {
+  if (!props) return null
+  const v2 = props[PROJECT_KEY] as ProjectStateV2 | undefined
+  if (v2 && typeof v2 === 'object' && (v2 as { version?: number }).version === PROJECT_STATE_VERSION) {
+    return v2
+  }
+  return null
+}
+
+function saveProject (node: any, state: ProjectStateV2): void {
+  if (!node.properties) node.properties = {}
+  node.properties[PROJECT_KEY] = state
+}
+
 export function createMesh2MotionExploreWidget(node: any) {
   const container = document.createElement('div')
   container.style.cssText = 'width:100%;height:100%;position:relative;overflow:hidden;'
@@ -21,49 +69,13 @@ export function createMesh2MotionExploreWidget(node: any) {
     if (event.data?.type === 'mesh2motion:ready') {
       node._mesh2motionReady = true
 
-      // Restore skeleton selection from saved workflow (if any).
-      // mesh2motion owns the skeleton picker UI; we just hand back what we
-      // stored last time via mesh2motion:skeletonChanged.
-      const savedSkeleton = node.properties?.['mesh2motion_skeleton']
-      if (savedSkeleton) {
+      // Send saved project blob; mesh2motion side reapplies skeleton, camera
+      // preset, timeline tracks, tuning, panel state, zoom, animation index
+      // in the right order.
+      const project = loadProject(node.properties)
+      if (project) {
         iframe.contentWindow?.postMessage(
-          { type: 'mesh2motion:restoreSkeleton', data: { value: savedSkeleton } },
-          POST_MESSAGE_ORIGIN,
-        )
-      }
-
-      // Restore camera preset selection from saved workflow (if any).
-      // Value is either a manifest file path (e.g. "Locomotion/walking.json")
-      // or null for free mode. Only send if the key exists — absence means
-      // "no choice persisted yet", leave whatever default the panel has.
-      if (node.properties && 'mesh2motion_camera_preset' in node.properties) {
-        iframe.contentWindow?.postMessage(
-          { type: 'mesh2motion:restoreCameraPreset', data: { value: node.properties['mesh2motion_camera_preset'] } },
-          POST_MESSAGE_ORIGIN,
-        )
-      }
-
-      // Restore timeline zoom (UI preference persisted per workflow). Value
-      // is the raw zoom number as understood by the timeline library.
-      if (node.properties && 'mesh2motion_timeline_zoom' in node.properties) {
-        iframe.contentWindow?.postMessage(
-          { type: 'mesh2motion:restoreTimelineZoom', data: { value: node.properties['mesh2motion_timeline_zoom'] } },
-          POST_MESSAGE_ORIGIN,
-        )
-      }
-
-      // Restore per-preset tuning map (fovScale / reverse per preset file).
-      if (node.properties && 'mesh2motion_preset_tuning' in node.properties) {
-        iframe.contentWindow?.postMessage(
-          { type: 'mesh2motion:restorePresetTuning', data: { map: node.properties['mesh2motion_preset_tuning'] } },
-          POST_MESSAGE_ORIGIN,
-        )
-      }
-
-      // Restore activity-bar panel open/closed state (both sides).
-      if (node.properties && 'mesh2motion_panel_state' in node.properties) {
-        iframe.contentWindow?.postMessage(
-          { type: 'mesh2motion:restorePanelState', data: { state: node.properties['mesh2motion_panel_state'] } },
+          { type: 'mesh2motion:restoreProject', data: project },
           POST_MESSAGE_ORIGIN,
         )
       }
@@ -73,60 +85,11 @@ export function createMesh2MotionExploreWidget(node: any) {
       // be out of sync with widget state (e.g. checker_room=true not taking effect).
       sendInitialBooleanStates()
       sendPreviewState()
-
-      // Queue timeline restore — will apply once animations finish loading
-      const saved = node.properties?.['mesh2motion_timeline']
-      if (saved) {
-        node._mesh2motionPendingTimeline = saved
-      }
     }
 
-    // Restore timeline when iframe signals animations are ready (replaces hardcoded 2s delay)
-    if (event.data?.type === 'mesh2motion:animationsReady') {
-      const pending = node._mesh2motionPendingTimeline
-      if (pending) {
-        iframe.contentWindow?.postMessage(
-          { type: 'mesh2motion:restoreTimeline', data: pending }, POST_MESSAGE_ORIGIN
-        )
-        node._mesh2motionPendingTimeline = null
-      }
-    }
-
-    // Persist timeline state from iframe
-    if (event.data?.type === 'mesh2motion:timelineState' && event.data?.data) {
-      if (!node.properties) node.properties = {}
-      node.properties['mesh2motion_timeline'] = event.data.data
-    }
-
-    // Persist skeleton selection from iframe
-    if (event.data?.type === 'mesh2motion:skeletonChanged' && event.data?.data?.value) {
-      if (!node.properties) node.properties = {}
-      node.properties['mesh2motion_skeleton'] = event.data.data.value
-    }
-
-    // Persist camera preset selection from iframe.
-    // Value is the manifest `file` string, or null for free mode.
-    if (event.data?.type === 'mesh2motion:cameraPresetChanged' && 'value' in (event.data?.data ?? {})) {
-      if (!node.properties) node.properties = {}
-      node.properties['mesh2motion_camera_preset'] = event.data.data.value
-    }
-
-    // Persist timeline zoom (UI preference).
-    if (event.data?.type === 'mesh2motion:timelineZoomChanged' && typeof event.data?.data?.value === 'number') {
-      if (!node.properties) node.properties = {}
-      node.properties['mesh2motion_timeline_zoom'] = event.data.data.value
-    }
-
-    // Persist per-preset tuning map. Iframe sends the full map on every change.
-    if (event.data?.type === 'mesh2motion:presetTuningChanged' && event.data?.data?.map) {
-      if (!node.properties) node.properties = {}
-      node.properties['mesh2motion_preset_tuning'] = event.data.data.map
-    }
-
-    // Persist activity-bar panel state. Iframe sends the full {right, left} blob on toggle.
-    if (event.data?.type === 'mesh2motion:panelStateChanged' && event.data?.data?.state) {
-      if (!node.properties) node.properties = {}
-      node.properties['mesh2motion_panel_state'] = event.data.data.state
+    // Persist v2 project blob from iframe.
+    if (event.data?.type === 'mesh2motion:projectStateChanged' && event.data?.data) {
+      saveProject(node, event.data.data as ProjectStateV2)
     }
   }
   window.addEventListener('message', readyHandler)
@@ -140,8 +103,8 @@ export function createMesh2MotionExploreWidget(node: any) {
 
   // Skeleton selection, camera preset, and panel visibility are all owned
   // by mesh2motion's own UI inside the iframe. Plugin-side we only persist
-  // those choices to node.properties and replay them on iframe ready — see
-  // readyHandler above.
+  // those choices to node.properties (consolidated v2 blob) and replay them
+  // on iframe ready — see readyHandler above.
 
   // (widget name, postMessage type) for boolean widgets hooked via hookBooleanWidget.
   // Used both to install callbacks and to re-push the initial value on iframe ready
@@ -246,31 +209,26 @@ export function createMesh2MotionExploreWidget(node: any) {
     })
 
     // Signature of every piece of state that affects the rendered video:
-    // node widgets + iframe-persisted properties. serializeValue fires on
-    // every Queue, so without this cache we'd retrigger the ~1s WebCodecs
-    // render pass on clicks where nothing has actually changed. Returning
-    // the previously uploaded videoPath makes ComfyUI's default input-hash
-    // cache match the prior run, so execute() is skipped too.
+    // node widgets + the project blob. serializeValue fires on every Queue,
+    // so without this cache we'd retrigger the ~1s WebCodecs render pass on
+    // clicks where nothing has actually changed. Returning the previously
+    // uploaded videoPath makes ComfyUI's default input-hash cache match the
+    // prior run, so execute() is skipped too.
     //
     // preview_output is deliberately absent — it only toggles the on-screen
     // crop overlay and has no effect on the captured frames.
     const computeVideoSignature = (): string | null => {
-      const presetFile = node.properties?.['mesh2motion_camera_preset'] as string | null | undefined
+      const project = node.properties?.[PROJECT_KEY] as ProjectStateV2 | undefined
+      const presetFile = project?.cameraPreset ?? null
       if (!presetFile) return null  // free mode: no video anyway
-
-      // tune-panel controls that affect captured frames (fovScale, reverse,
-      // pathScale, yaw, roll, offset) land in mesh2motion_preset_tuning[file].
-      // Speed is excluded because it's timeline-level and already covered by
-      // the timeline entry below.
-      const tuningMap = node.properties?.['mesh2motion_preset_tuning'] as Record<string, unknown> | undefined
-      const tuning = tuningMap?.[presetFile] ?? null
 
       const w = (name: string) => node.widgets?.find((x: any) => x.name === name)?.value
       return JSON.stringify({
         presetFile,
-        skeleton: node.properties?.['mesh2motion_skeleton'] ?? null,
-        timeline: node.properties?.['mesh2motion_timeline'] ?? null,
-        tuning,
+        skeleton: project?.skeleton ?? null,
+        timeline: project?.timeline ?? null,
+        tuning: project?.presetTuning?.[presetFile] ?? null,
+        animationIndex: project?.animationIndex ?? 0,
         width:    w('width'),
         height:   w('height'),
         fps:      w('fps'),
@@ -281,9 +239,8 @@ export function createMesh2MotionExploreWidget(node: any) {
     }
 
     hookHiddenWidget('video_frames', async () => {
-      // Camera preset is persisted under node.properties by the iframe.
-      // File format: "<category>/<presetId>.json" (or null for free mode).
-      const presetFile = node.properties?.['mesh2motion_camera_preset'] as string | null | undefined
+      const project = node.properties?.[PROJECT_KEY] as ProjectStateV2 | undefined
+      const presetFile = project?.cameraPreset ?? null
       if (!presetFile) return ''
 
       // If nothing changed since last successful capture, skip the render

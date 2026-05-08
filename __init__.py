@@ -34,6 +34,7 @@ async def comfy_entrypoint() -> Mesh2MotionExtension:
 
 # Register HTTP routes for Mesh2Motion UI
 from server import PromptServer
+import folder_paths
 
 routes = PromptServer.instance.routes
 
@@ -41,6 +42,80 @@ MESH2MOTION_UI_PATH = Path(__file__).parent / 'mesh2motion-ui'
 
 # Resolve once at module load for path-traversal checks
 _MESH2MOTION_UI_REAL = MESH2MOTION_UI_PATH.resolve()
+
+# Subfolder of ComfyUI's input directory where user-uploaded FBX assets live.
+# `/api/view?type=input&subfolder=mesh2motion/customs&filename=<name>` serves
+# the file content; the listing endpoint below returns the names.
+_CUSTOMS_SUBFOLDER = 'mesh2motion/customs'
+_CUSTOMS_EXTS = {'.fbx'}
+
+
+@routes.get('/mesh2motion/api/customs')
+async def list_mesh2motion_customs(request):
+    """List user-uploaded FBX assets in input/mesh2motion/customs/.
+
+    Returns { "files": ["boxing.fbx", "...] }. Missing folder is not an
+    error — just an empty list, since the upload UI may create it lazily.
+    """
+    input_dir = Path(folder_paths.get_input_directory())
+    customs_dir = (input_dir / _CUSTOMS_SUBFOLDER).resolve()
+    # Path-traversal sanity: the resolved customs folder must still live
+    # inside ComfyUI's input directory.
+    if not _is_safe_child(input_dir.resolve(), customs_dir):
+        return web.json_response({'files': []})
+    if not customs_dir.is_dir():
+        return web.json_response({'files': []})
+    files = sorted(
+        p.name for p in customs_dir.iterdir()
+        if p.is_file() and p.suffix.lower() in _CUSTOMS_EXTS
+    )
+    return web.json_response({'files': files})
+
+
+@routes.post('/mesh2motion/api/customs')
+async def upload_mesh2motion_custom(request):
+    """Accept a multipart-form FBX upload and save under
+    input/mesh2motion/customs/. Form field name: `file`. Returns the
+    sanitized filename(s) saved on success. Streams the body to disk so
+    large FBX uploads don't buffer the whole file in memory.
+    """
+    input_dir = Path(folder_paths.get_input_directory()).resolve()
+    customs_dir = (input_dir / _CUSTOMS_SUBFOLDER).resolve()
+    if not _is_safe_child(input_dir, customs_dir):
+        return web.json_response({'error': 'invalid path'}, status=400)
+    customs_dir.mkdir(parents=True, exist_ok=True)
+
+    reader = await request.multipart()
+    saved = []
+    while True:
+        field = await reader.next()
+        if field is None:
+            break
+        if field.name != 'file':
+            continue
+        # Strip any directory components the client might have included
+        # (browsers usually send just the basename, but defence in depth).
+        raw_name = field.filename or 'upload.fbx'
+        safe_name = Path(raw_name).name
+        if not safe_name or safe_name in {'.', '..'} \
+                or '/' in safe_name or '\\' in safe_name:
+            return web.json_response({'error': 'invalid filename'}, status=400)
+        if Path(safe_name).suffix.lower() not in _CUSTOMS_EXTS:
+            return web.json_response({'error': 'unsupported extension'}, status=400)
+        target = (customs_dir / safe_name).resolve()
+        if not _is_safe_child(customs_dir, target):
+            return web.json_response({'error': 'path traversal blocked'}, status=400)
+        with target.open('wb') as f:
+            while True:
+                chunk = await field.read_chunk(64 * 1024)
+                if not chunk:
+                    break
+                f.write(chunk)
+        saved.append(safe_name)
+
+    if not saved:
+        return web.json_response({'error': 'no file in form'}, status=400)
+    return web.json_response({'files': saved})
 
 
 def _is_safe_child(base_real: Path, candidate: Path) -> bool:

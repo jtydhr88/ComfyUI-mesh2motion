@@ -119,6 +119,20 @@ async function uploadMesh2MotionTempImage(dataUrl) {
   }
   return await resp.json();
 }
+const PROJECT_STATE_VERSION = 2;
+const PROJECT_KEY = "mesh2motion_project";
+function loadProject(props) {
+  if (!props) return null;
+  const v2 = props[PROJECT_KEY];
+  if (v2 && typeof v2 === "object" && v2.version === PROJECT_STATE_VERSION) {
+    return v2;
+  }
+  return null;
+}
+function saveProject(node, state) {
+  if (!node.properties) node.properties = {};
+  node.properties[PROJECT_KEY] = state;
+}
 function createMesh2MotionExploreWidget(node) {
   const container = document.createElement("div");
   container.style.cssText = "width:100%;height:100%;position:relative;overflow:hidden;";
@@ -130,81 +144,22 @@ function createMesh2MotionExploreWidget(node) {
   node._mesh2motionIframe = iframe;
   node._mesh2motionReady = false;
   const readyHandler = (event) => {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z;
+    var _a, _b, _c, _d;
     if (event.origin !== POST_MESSAGE_ORIGIN || event.source !== iframe.contentWindow) return;
     if (((_a = event.data) == null ? void 0 : _a.type) === "mesh2motion:ready") {
       node._mesh2motionReady = true;
-      const savedSkeleton = (_b = node.properties) == null ? void 0 : _b["mesh2motion_skeleton"];
-      if (savedSkeleton) {
-        (_c = iframe.contentWindow) == null ? void 0 : _c.postMessage(
-          { type: "mesh2motion:restoreSkeleton", data: { value: savedSkeleton } },
-          POST_MESSAGE_ORIGIN
-        );
-      }
-      if (node.properties && "mesh2motion_camera_preset" in node.properties) {
-        (_d = iframe.contentWindow) == null ? void 0 : _d.postMessage(
-          { type: "mesh2motion:restoreCameraPreset", data: { value: node.properties["mesh2motion_camera_preset"] } },
-          POST_MESSAGE_ORIGIN
-        );
-      }
-      if (node.properties && "mesh2motion_timeline_zoom" in node.properties) {
-        (_e = iframe.contentWindow) == null ? void 0 : _e.postMessage(
-          { type: "mesh2motion:restoreTimelineZoom", data: { value: node.properties["mesh2motion_timeline_zoom"] } },
-          POST_MESSAGE_ORIGIN
-        );
-      }
-      if (node.properties && "mesh2motion_preset_tuning" in node.properties) {
-        (_f = iframe.contentWindow) == null ? void 0 : _f.postMessage(
-          { type: "mesh2motion:restorePresetTuning", data: { map: node.properties["mesh2motion_preset_tuning"] } },
-          POST_MESSAGE_ORIGIN
-        );
-      }
-      if (node.properties && "mesh2motion_panel_state" in node.properties) {
-        (_g = iframe.contentWindow) == null ? void 0 : _g.postMessage(
-          { type: "mesh2motion:restorePanelState", data: { state: node.properties["mesh2motion_panel_state"] } },
+      const project = loadProject(node.properties);
+      if (project) {
+        (_b = iframe.contentWindow) == null ? void 0 : _b.postMessage(
+          { type: "mesh2motion:restoreProject", data: project },
           POST_MESSAGE_ORIGIN
         );
       }
       sendInitialBooleanStates();
       sendPreviewState();
-      const saved = (_h = node.properties) == null ? void 0 : _h["mesh2motion_timeline"];
-      if (saved) {
-        node._mesh2motionPendingTimeline = saved;
-      }
     }
-    if (((_i = event.data) == null ? void 0 : _i.type) === "mesh2motion:animationsReady") {
-      const pending = node._mesh2motionPendingTimeline;
-      if (pending) {
-        (_j = iframe.contentWindow) == null ? void 0 : _j.postMessage(
-          { type: "mesh2motion:restoreTimeline", data: pending },
-          POST_MESSAGE_ORIGIN
-        );
-        node._mesh2motionPendingTimeline = null;
-      }
-    }
-    if (((_k = event.data) == null ? void 0 : _k.type) === "mesh2motion:timelineState" && ((_l = event.data) == null ? void 0 : _l.data)) {
-      if (!node.properties) node.properties = {};
-      node.properties["mesh2motion_timeline"] = event.data.data;
-    }
-    if (((_m = event.data) == null ? void 0 : _m.type) === "mesh2motion:skeletonChanged" && ((_o = (_n = event.data) == null ? void 0 : _n.data) == null ? void 0 : _o.value)) {
-      if (!node.properties) node.properties = {};
-      node.properties["mesh2motion_skeleton"] = event.data.data.value;
-    }
-    if (((_p = event.data) == null ? void 0 : _p.type) === "mesh2motion:cameraPresetChanged" && "value" in (((_q = event.data) == null ? void 0 : _q.data) ?? {})) {
-      if (!node.properties) node.properties = {};
-      node.properties["mesh2motion_camera_preset"] = event.data.data.value;
-    }
-    if (((_r = event.data) == null ? void 0 : _r.type) === "mesh2motion:timelineZoomChanged" && typeof ((_t = (_s = event.data) == null ? void 0 : _s.data) == null ? void 0 : _t.value) === "number") {
-      if (!node.properties) node.properties = {};
-      node.properties["mesh2motion_timeline_zoom"] = event.data.data.value;
-    }
-    if (((_u = event.data) == null ? void 0 : _u.type) === "mesh2motion:presetTuningChanged" && ((_w = (_v = event.data) == null ? void 0 : _v.data) == null ? void 0 : _w.map)) {
-      if (!node.properties) node.properties = {};
-      node.properties["mesh2motion_preset_tuning"] = event.data.data.map;
-    }
-    if (((_x = event.data) == null ? void 0 : _x.type) === "mesh2motion:panelStateChanged" && ((_z = (_y = event.data) == null ? void 0 : _y.data) == null ? void 0 : _z.state)) {
-      if (!node.properties) node.properties = {};
-      node.properties["mesh2motion_panel_state"] = event.data.data.state;
+    if (((_c = event.data) == null ? void 0 : _c.type) === "mesh2motion:projectStateChanged" && ((_d = event.data) == null ? void 0 : _d.data)) {
+      saveProject(node, event.data.data);
     }
   };
   window.addEventListener("message", readyHandler);
@@ -310,20 +265,20 @@ function createMesh2MotionExploreWidget(node) {
       }
     });
     const computeVideoSignature = () => {
-      var _a, _b, _c, _d;
-      const presetFile = (_a = node.properties) == null ? void 0 : _a["mesh2motion_camera_preset"];
+      var _a, _b;
+      const project = (_a = node.properties) == null ? void 0 : _a[PROJECT_KEY];
+      const presetFile = (project == null ? void 0 : project.cameraPreset) ?? null;
       if (!presetFile) return null;
-      const tuningMap = (_b = node.properties) == null ? void 0 : _b["mesh2motion_preset_tuning"];
-      const tuning = (tuningMap == null ? void 0 : tuningMap[presetFile]) ?? null;
       const w2 = (name) => {
         var _a2, _b2;
         return (_b2 = (_a2 = node.widgets) == null ? void 0 : _a2.find((x) => x.name === name)) == null ? void 0 : _b2.value;
       };
       return JSON.stringify({
         presetFile,
-        skeleton: ((_c = node.properties) == null ? void 0 : _c["mesh2motion_skeleton"]) ?? null,
-        timeline: ((_d = node.properties) == null ? void 0 : _d["mesh2motion_timeline"]) ?? null,
-        tuning,
+        skeleton: (project == null ? void 0 : project.skeleton) ?? null,
+        timeline: (project == null ? void 0 : project.timeline) ?? null,
+        tuning: ((_b = project == null ? void 0 : project.presetTuning) == null ? void 0 : _b[presetFile]) ?? null,
+        animationIndex: (project == null ? void 0 : project.animationIndex) ?? 0,
         width: w2("width"),
         height: w2("height"),
         fps: w2("fps"),
@@ -334,7 +289,8 @@ function createMesh2MotionExploreWidget(node) {
     };
     hookHiddenWidget("video_frames", async () => {
       var _a, _b, _c;
-      const presetFile = (_a = node.properties) == null ? void 0 : _a["mesh2motion_camera_preset"];
+      const project = (_a = node.properties) == null ? void 0 : _a[PROJECT_KEY];
+      const presetFile = (project == null ? void 0 : project.cameraPreset) ?? null;
       if (!presetFile) return "";
       const signature = computeVideoSignature();
       if (signature != null && signature === node._mesh2motionVideoSig && typeof node._mesh2motionVideoSerialized === "string" && node._mesh2motionVideoSerialized) {
