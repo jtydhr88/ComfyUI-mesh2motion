@@ -304,6 +304,26 @@ talks to the iframe through a small `comfyui:*` postMessage protocol
 
 ## Changelog
 
+### 1.2.0 — 2026-05-07
+
+- **Custom FBX import.** Users can drop self-contained FBX assets
+  (mesh + skeleton + animations packed in one file, e.g. Mixamo
+  downloads) straight into the editor: click the upload button on the
+  left activity bar, pick a `.fbx`, and it shows up as a button in the
+  model selector. Files are served out of
+  `<comfyui>/input/mesh2motion/customs/`. The model is bbox-normalised
+  on load so it lands at the same scale as the built-in human rig
+  regardless of source units.
+- **Multi-mesh / multi-take FBX support.** Mixamo characters split
+  into body + hands + fingers + ... now play correctly (the previous
+  per-mesh action binding silently dropped most tracks). Multi-take
+  FBX files list every clip in the right-side animation panel; generic
+  / duplicate names (`mixamo.com`, `Take 001`, ...) are rewritten to
+  `Take N` so each entry is distinguishable.
+- **Custom FBX selection persists.** The chosen filename is saved
+  into ProjectState alongside the skeleton choice; reloading the
+  workflow restores the same actor.
+
 ### 1.1.0 — 2026-04-22
 
 - **Window mode restored.** Right-click `LoadImage` / `Load3D` /

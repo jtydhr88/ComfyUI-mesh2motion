@@ -264,6 +264,22 @@ postMessage 协议（`loadModel` / `requestExport` / `requestImageExport` /
 
 ## 更新日志
 
+### 1.2.0 — 2026-05-07
+
+- **自定义 FBX 导入。** 用户可以直接在编辑器里上传自包含的 FBX 资源
+  （mesh + 骨骼 + 动画打包在同一个文件里，例如 Mixamo 下载的文件）：
+  点左侧活动栏的上传按钮、选个 `.fbx`，文件就以按钮形式出现在模型选择
+  面板里。插件从 `<comfyui>/input/mesh2motion/customs/` 提供文件。
+  加载时按 bbox 归一化，让模型大小落在内置人体骨架附近，不管源文件
+  用的是什么单位。
+- **支持 multi-mesh / multi-take 的 FBX。** Mixamo 角色拆成 body +
+  hands + fingers + ... 多个 mesh 的现在可以正确播放（之前每个 mesh
+  一个 action 的绑定方式会静默丢掉大部分 track）。多个 take 的 FBX
+  把每个 clip 都列在右侧动画面板里；通用 / 重名（`mixamo.com`、
+  `Take 001` 等）会被重写成 `Take N`，每条都能区分。
+- **自定义 FBX 选择会被持久化。** 选的 FBX 文件名跟骨骼选择一样存进
+  ProjectState；重新加载 workflow 会恢复同一个 actor。
+
 ### 1.1.0 — 2026-04-22
 
 - **窗口模式回归。** 右键 `LoadImage` / `Load3D` / `Preview3D` /
